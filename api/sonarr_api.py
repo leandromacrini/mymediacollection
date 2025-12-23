@@ -4,8 +4,8 @@ from typing import List, Optional
 from core import db_core
 
 # ===== CONFIG =====
-SONARR_URL = "http://192.168.1.20:8989"
-SONARR_API_KEY = "c519bc45cba241f89155cdd6bad752c1"
+SONARR_URL = "REMOVED"
+SONARR_API_KEY = "REMOVED"
 PROFILE_ID = 1           # Quality profile
 ENABLE_SEARCH = False     # True per far partire la ricerca automatica su Sonarr
 ROOT_FOLDER = "/data/File Sharing/sonarr"

@@ -185,7 +185,7 @@ ON CONFLICT (name) DO NOTHING;
 
 -- Radarr
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
-SELECT id, 'radarr_url', 'Radarr URL', 'http://192.168.1.20:7878', 'string', TRUE FROM services WHERE name='Radarr'
+SELECT id, 'radarr_url', 'Radarr URL', 'REMOVED', 'string', TRUE FROM services WHERE name='Radarr'
 ON CONFLICT (service_id, key) DO NOTHING;
 
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
@@ -194,7 +194,7 @@ ON CONFLICT (service_id, key) DO NOTHING;
 
 -- Sonarr
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
-SELECT id, 'sonarr_url', 'Sonarr URL', 'http://192.168.1.20:8989', 'string', TRUE FROM services WHERE name='Sonarr'
+SELECT id, 'sonarr_url', 'Sonarr URL', 'REMOVED', 'string', TRUE FROM services WHERE name='Sonarr'
 ON CONFLICT (service_id, key) DO NOTHING;
 
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)

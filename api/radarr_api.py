@@ -4,8 +4,8 @@ from typing import List
 from core import db_core
 
 # ===== CONFIG =====
-RADARR_URL = "http://192.168.1.20:7878"
-RADARR_API_KEY = "96b01ad026f847698a146fc0257124cc"
+RADARR_URL = "REMOVED"
+RADARR_API_KEY = "REMOVED"
 PROFILE_ID = 7
 ENABLE_SEARCH = False  # True per far partire la ricerca automatica su Radarr
 ROOT_FOLDER = "/data/File Sharing/radarr"  # cartella principale di Radarr
