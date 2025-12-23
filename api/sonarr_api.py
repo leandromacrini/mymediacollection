@@ -171,6 +171,7 @@ def sonarr_lookup(title: str, db: db_core.MediaDB | None = None) -> list[SonarrM
             imdb_id=s.get("imdbId"),
             year=s.get("year"),
             root_folder=cfg["root_folder"],
-            monitored=True
+            monitored=True,
+            slug=s.get("titleSlug")
         ))
     return media_list

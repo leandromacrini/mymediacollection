@@ -90,6 +90,7 @@
                     <th>Info</th>
                     <th>Identificazione</th>
                     <th>Azioni</th>
+                    <th class="text-end" style="width: 56px;"></th>
                 </tr>
             </thead>
 
@@ -109,6 +110,9 @@
                     <td>
                         <strong>{{ item.title }}</strong><br>
                         <small class="text-muted">{{ item.year }}</small>
+                        {% if item.original_title and item.original_title != item.title %}
+                            <br><small class="text-muted">Orig: {{ item.original_title }}</small>
+                        {% endif %}
                     </td>
 
                     <!-- INFO -->
@@ -118,22 +122,56 @@
                             {% if item.category %}
                                 <span class="badge bg-info text-dark">{{ item.category }}</span>
                             {% endif %}
+                            {% if item.language %}
+                                <span class="badge bg-light text-dark">{{ item.language }}</span>
+                            {% endif %}
                         </div>
                     </td>
 
             <!-- IDENTIFICATION STATUS -->
             <td>
                 <div class="d-flex flex-wrap gap-1">
-                    {% if item.external_ids.get('imdb') %}
-                        <span class="badge badge-imdb">IMDB</span>
+                    {% if item.external_ids.get('tvdb') %}
+                        {% set tvdb_url = item.external_ids.get('tvdb_link') or ("https://thetvdb.com/series/" ~ item.external_ids.get('tvdb')) %}
+                        <a class="badge badge-imdb text-decoration-none"
+                           href="{{ tvdb_url }}"
+                           target="_blank"
+                           rel="noopener"
+                           data-bs-toggle="tooltip"
+                           data-bs-placement="top"
+                           title="{{ item.external_ids.get('tvdb') }}">
+                            TVDB
+                        </a>
                     {% endif %}
                     
                     {% if item.external_ids.get('tmdb') %}
-                        <span class="badge badge-tmdb">TMDB</span>
+                        {% if item.media_type == "series" %}
+                            {% set tmdb_url = "https://www.themoviedb.org/tv/" ~ item.external_ids.get('tmdb') %}
+                        {% else %}
+                            {% set tmdb_url = "https://www.themoviedb.org/movie/" ~ item.external_ids.get('tmdb') %}
+                        {% endif %}
+                        <a class="badge badge-tmdb text-decoration-none"
+                           href="{{ tmdb_url }}"
+                           target="_blank"
+                           rel="noopener"
+                           data-bs-toggle="tooltip"
+                           data-bs-placement="top"
+                           title="{{ item.external_ids.get('tmdb') }}">
+                            TMDB
+                        </a>
                     {% endif %}
 
                     {% if item.external_ids.get('anilist') %}
-                        <span class="badge badge-anilist">AniList</span>
+                        {% set anilist_url = item.external_ids.get('anilist_link') or ("https://anilist.co/anime/" ~ item.external_ids.get('anilist')) %}
+                        <a class="badge badge-anilist text-decoration-none"
+                           href="{{ anilist_url }}"
+                           target="_blank"
+                           rel="noopener"
+                           data-bs-toggle="tooltip"
+                           data-bs-placement="top"
+                           title="{{ item.external_ids.get('anilist') }}">
+                            AniList
+                        </a>
                     {% endif %}
                 </div>
             </td>
@@ -142,55 +180,52 @@
                     <td>
                         <div class="d-flex flex-wrap gap-2 wanted-actions">
 
-                            <!-- IMDB -->
-                            <button class="btn btn-sm btn-imdb d-inline-flex align-items-center gap-1"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#imdbModal{{ item.id }}">
-                                <i class="bi bi-search"></i>
-                                IMDB
-                            </button>
-
-                            <!-- TMDB -->
-                            <button class="btn btn-sm btn-tmdb d-inline-flex align-items-center gap-1"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#tmdbModal{{ item.id }}">
-                                <i class="bi bi-film"></i>
-                                TMDB
-                            </button>
-
-                            <!-- ANILIST -->
-                            <button class="btn btn-sm btn-anilist d-inline-flex align-items-center gap-1"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#anilistModal{{ item.id }}">
-                                <i class="bi bi-collection-play"></i>
-                                AniList
-                            </button>
-
-                            {% if item.external_ids.get('anilist_link') %}
-                                <a class="btn btn-sm btn-anilist d-inline-flex align-items-center gap-1"
-                                   href="{{ item.external_ids.get('anilist_link') }}"
-                                   target="_blank"
-                                   rel="noopener">
-                                    <i class="bi bi-box-arrow-up-right"></i>
-                                    AniList Link
-                                </a>
+                            {% if item.media_type == "series" %}
+                                <button class="btn btn-sm btn-imdb d-inline-flex align-items-center gap-1"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#tvdbModal{{ item.id }}">
+                                    <i class="bi bi-search"></i>
+                                    TVDB
+                                </button>
                             {% endif %}
 
-                            <button class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#deleteWantedModal{{ item.id }}">
-                                <i class="bi bi-trash"></i>
-                                Elimina
-                            </button>
+                            {% if item.media_type == "movie" %}
+                                <button class="btn btn-sm btn-tmdb d-inline-flex align-items-center gap-1"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#tmdbModal{{ item.id }}">
+                                    <i class="bi bi-film"></i>
+                                    TMDB
+                                </button>
+                            {% endif %}
+
+                            {% if item.category == "anime" %}
+                                <button class="btn btn-sm btn-anilist d-inline-flex align-items-center gap-1"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#anilistModal{{ item.id }}">
+                                    <i class="bi bi-collection-play"></i>
+                                    AniList
+                                </button>
+                            {% endif %}
 
                         </div>
                     </td>
 
+                    <!-- DELETE -->
+                    <td class="text-end">
+                        <button class="btn btn-sm btn-outline-danger rounded-circle d-inline-flex align-items-center justify-content-center"
+                                style="width: 34px; height: 34px;"
+                                data-bs-toggle="modal"
+                                data-bs-target="#deleteWantedModal{{ item.id }}"
+                                title="Elimina">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </td>
+
                 </tr>
 
-                <!-- ================= IMDB MODAL ================= -->
+                <!-- ================= TVDB MODAL ================= -->
                 <div class="modal fade"
-                     id="imdbModal{{ item.id }}"
+                     id="tvdbModal{{ item.id }}"
                      tabindex="-1"
                      aria-hidden="true">
                     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
@@ -198,20 +233,31 @@
 
                             <div class="modal-header">
                                 <h5 class="modal-title">
-                                    Identifica su IMDB - {{ item.title }}
+                            Identifica su TVDB - {{ item.title }}
                                 </h5>
                                 <button type="button" class="btn-close"
                                         data-bs-dismiss="modal"></button>
                             </div>
 
                             <div class="modal-body">
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                        <input type="text"
+                                               class="form-control lookup-query"
+                                               data-default="{{ item.original_title or item.title }}"
+                                               value="{{ item.original_title or item.title }}">
+                                        <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
+                                    </div>
+                                </div>
                                 <div class="alert alert-info">
-                                    Ricerca IMDB in corso...
+                                    Ricerca TVDB in corso...
                                 </div>
 
                                 <!-- RESULTS PLACEHOLDER -->
-                                <ul class="list-group imdb-results"
-                                    data-media-id="{{ item.id }}">
+                                <ul class="list-group lookup-results"
+                                    data-media-id="{{ item.id }}"
+                                    data-provider="tvdb">
                                     <!-- risultati caricati via JS -->
                                 </ul>
                             </div>
@@ -244,12 +290,23 @@
                             </div>
 
                             <div class="modal-body">
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                        <input type="text"
+                                               class="form-control lookup-query"
+                                               data-default="{{ item.title }}"
+                                               value="{{ item.title }}">
+                                        <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
+                                    </div>
+                                </div>
                                 <div class="alert alert-info">
                                     Ricerca TMDB in corso...
                                 </div>
 
-                                <ul class="list-group tmdb-results"
-                                    data-media-id="{{ item.id }}">
+                                <ul class="list-group lookup-results"
+                                    data-media-id="{{ item.id }}"
+                                    data-provider="tmdb">
                                 </ul>
                             </div>
 
@@ -281,12 +338,23 @@
                             </div>
 
                             <div class="modal-body">
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
+                                        <input type="text"
+                                               class="form-control lookup-query"
+                                               data-default="{{ item.original_title or item.title }}"
+                                               value="{{ item.original_title or item.title }}">
+                                        <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
+                                    </div>
+                                </div>
                                 <div class="alert alert-info">
                                     Ricerca AniList in corso...
                                 </div>
 
-                                <ul class="list-group anilist-results"
-                                    data-media-id="{{ item.id }}">
+                                <ul class="list-group lookup-results"
+                                    data-media-id="{{ item.id }}"
+                                    data-provider="anilist">
                                 </ul>
                             </div>
 
@@ -409,6 +477,18 @@
 
 <script>
 $(document).ready(function() {
+    var wantedSearchTerm = '';
+    $.fn.dataTable.ext.search.push(function(settings, data) {
+        if (settings.nTable.id !== 'wanted_table') {
+            return true;
+        }
+        if (!wantedSearchTerm) {
+            return true;
+        }
+        var title = (data[1] || '').toLowerCase();
+        return title.indexOf(wantedSearchTerm) !== -1;
+    });
+
     var table = $('#wanted_table').DataTable({
         paging: true,
         ordering: true,
@@ -417,10 +497,18 @@ $(document).ready(function() {
         pageLength: 25,
         lengthMenu: [10, 25, 50, 100],
         columnDefs: [
-            { orderable: false, targets: [0, 4] }
+            { orderable: false, targets: [0, 4, 5] },
+            { searchable: false, targets: [0, 2, 3, 4, 5] }
         ],
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
+
+    function initTooltips() {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(function (tooltipTriggerEl) {
+            new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    }
 
     function updateBulkState() {
         var count = $('.wanted-select:checked').length;
@@ -429,9 +517,21 @@ $(document).ready(function() {
         $('#bulk-delete-count').text(count);
     }
 
-    $('#wanted-title-search').on('input', function() {
-        table.column(1).search(this.value).draw();
+    function applySearch() {
+        var value = $('#wanted-title-search').val() || '';
+        wantedSearchTerm = value.toLowerCase();
+        table.draw();
         updateBulkState();
+    }
+
+    $('#wanted-title-search').on('input keyup change', function(e) {
+        if (e.type === 'keyup' && e.key && e.key !== 'Enter') {
+            return;
+        }
+        if (e.type === 'keyup' && e.key === 'Enter') {
+            e.preventDefault();
+        }
+        applySearch();
     });
 
     $(document).on('change', '.wanted-select', updateBulkState);
@@ -448,6 +548,99 @@ $(document).ready(function() {
     });
 
     $('#bulkDeleteModal').on('show.bs.modal', updateBulkState);
+
+    function renderLookupResults(provider, items, listEl) {
+        if (!items || !items.length) {
+            listEl.html('<li class="list-group-item text-muted">Nessun risultato trovato.</li>');
+            return;
+        }
+        var html = items.map(function(item) {
+            var title = item.title || 'Senza titolo';
+            var year = item.year ? ' (' + item.year + ')' : '';
+            var externalId = item.external_id || '';
+            var imdb = item.imdb_id ? ' · IMDB: ' + item.imdb_id : '';
+            var link = item.link || ' ';
+            if (!link && provider === 'tmdb' && externalId) {
+                link = 'https://www.themoviedb.org/movie/' + externalId;
+            }
+            return (
+                '<li class="list-group-item d-flex justify-content-between align-items-center gap-3">' +
+                    '<div>' +
+                        '<div class="fw-semibold">' + title + year + '</div>' +
+                        '<div class="text-muted small">ID: ' + externalId + imdb + link + '</div>' +
+                    '</div>' +
+                    '<div class="d-flex align-items-center gap-2">' +
+                        (link ? '<a class="btn btn-sm btn-outline-secondary" href="' + link + '" target="_blank" rel="noopener">Apri</a>' : '') +
+                        '<button class="btn btn-sm btn-primary select-external-btn" data-source="' + provider + '" data-external-id="' + externalId + '" data-media-id="' + item.media_item_id + '"' + (link ? ' data-link=\"' + link + '\"' : '') + '>Seleziona</button>' +
+                    '</div>' +
+                '</li>'
+            );
+        }).join('');
+        listEl.html(html);
+    }
+
+    function loadLookupResults(listEl, queryOverride) {
+        var provider = listEl.data('provider');
+        var mediaId = listEl.data('media-id');
+        var query = queryOverride || listEl.closest('.modal-body').find('.lookup-query').val() || '';
+        listEl.html('<li class="list-group-item text-muted">Ricerca in corso...</li>');
+        $.getJSON('/api/wanted/' + mediaId + '/lookup/' + provider, { q: query }, function(resp) {
+            var items = resp && resp.items ? resp.items : [];
+            items = items.map(function(item) {
+                item.media_item_id = mediaId;
+                return item;
+            });
+            renderLookupResults(provider, items, listEl);
+        }).fail(function() {
+            listEl.html('<li class="list-group-item text-danger">Errore nella ricerca.</li>');
+        });
+    }
+
+    $(document).on('show.bs.modal', '.modal', function() {
+        var listEl = $(this).find('.lookup-results');
+        if (!listEl.length) {
+            return;
+        }
+        loadLookupResults(listEl);
+    });
+
+    $(document).on('click', '.lookup-run', function() {
+        var modal = $(this).closest('.modal');
+        var listEl = modal.find('.lookup-results');
+        loadLookupResults(listEl);
+    });
+
+    $(document).on('keyup', '.lookup-query', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            $(this).closest('.modal').find('.lookup-run').click();
+        }
+    });
+
+    $(document).on('click', '.select-external-btn', function() {
+        var button = $(this);
+        var mediaId = button.data('media-id');
+        var source = button.data('source');
+        var externalId = button.data('external-id');
+        var link = button.data('link');
+
+        button.prop('disabled', true).text('Salvo...');
+        $.ajax({
+            url: '/api/wanted/' + mediaId + '/external',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ source: source, external_id: externalId, link: link })
+        }).done(function() {
+            location.reload();
+        }).fail(function() {
+            button.prop('disabled', false).text('Seleziona');
+        });
+    });
+
+    table.on('draw', function() {
+        initTooltips();
+    });
+    initTooltips();
 });
 </script>
 

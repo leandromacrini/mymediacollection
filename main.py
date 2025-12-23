@@ -1,6 +1,7 @@
-from flask import Flask, abort, render_template, request, redirect, url_for, flash
-from werkzeug.utils import secure_filename
 import os
+from flask import Flask, abort, render_template, request, redirect, url_for, flash, jsonify
+from werkzeug.utils import secure_filename
+
 from api import plex_db_api
 from api import radarr_api
 from api import sonarr_api
@@ -14,6 +15,12 @@ ALLOWED_EXTENSIONS = {"db", "txt"}
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def get_lookup_title(item: Media) -> str:
+    return item.original_title or item.title
+
+def json_items(items):
+    return jsonify({"items": items})
 
 app = Flask(__name__)
 app.secret_key = "my_media_collection_secret_key"
@@ -112,6 +119,85 @@ def wanted_delete(media_item_id):
     else:
         flash("Elemento non trovato.", "warning")
     return redirect(url_for("wanted_view"))
+
+@app.route("/api/wanted/<int:media_item_id>/lookup/tmdb")
+def wanted_lookup_tmdb(media_item_id):
+    item = db.get_media_item(media_item_id)
+    if not item or item.media_type != "movie":
+        return json_items([])
+
+    query = request.args.get("q") or item.title
+    results = radarr_api.radarr_lookup(query, item.year, db)
+    items = [
+        {
+            "title": r.title,
+            "year": r.year,
+            "external_id": r.tmdb_id,
+            "imdb_id": r.imdb_id
+        }
+        for r in results
+        if r.tmdb_id
+    ]
+    return json_items(items)
+
+@app.route("/api/wanted/<int:media_item_id>/lookup/tvdb")
+def wanted_lookup_tvdb(media_item_id):
+    item = db.get_media_item(media_item_id)
+    if not item or item.media_type != "series":
+        return json_items([])
+
+    lookup_title = request.args.get("q") or get_lookup_title(item)
+    results = sonarr_api.sonarr_lookup(lookup_title, db)
+    items = [
+        {
+            "title": r.title,
+            "year": r.year,
+            "external_id": r.tvdb_id,
+            "imdb_id": r.imdb_id,
+            "slug": r.slug,
+            "link": f"https://thetvdb.com/series/{r.slug}" if r.slug else None
+        }
+        for r in results
+        if r.tvdb_id
+    ]
+    return json_items(items)
+
+@app.route("/api/wanted/<int:media_item_id>/lookup/anilist")
+def wanted_lookup_anilist(media_item_id):
+    item = db.get_media_item(media_item_id)
+    if not item or item.category != "anime":
+        return json_items([])
+
+    lookup_title = request.args.get("q") or get_lookup_title(item)
+    results = [aw_api.AWMedia(r) for r in aw_api.find(lookup_title)]
+    items = [
+        {
+            "title": r.title,
+            "year": r.year,
+            "external_id": r.anilist_id,
+            "link": r.link
+        }
+        for r in results
+        if r.anilist_id
+    ]
+    return json_items(items)
+
+@app.route("/api/wanted/<int:media_item_id>/external", methods=["POST"])
+def wanted_set_external(media_item_id):
+    data = request.get_json(silent=True) or {}
+    source = data.get("source")
+    external_id = data.get("external_id")
+    link = data.get("link")
+    if not source or not external_id:
+        return jsonify({"ok": False, "error": "missing_parameters"}), 400
+
+    db.add_external_id(media_item_id, source, str(external_id))
+    if source == "anilist":
+        db.add_external_id(media_item_id, "anilist_link", f"https://anilist.co/anime/{external_id}")
+    if source == "tvdb" and link:
+        db.add_external_id(media_item_id, "tvdb_link", link)
+
+    return jsonify({"ok": True})
 
 @app.route("/settings", methods=["GET", "POST"])
 def settings_view():

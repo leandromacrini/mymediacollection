@@ -221,6 +221,8 @@ class MediaDB:
                     category=r["category"],
                     source=r["source"],
                     source_ref=r["source_ref"],
+                    original_title=r.get("original_title"),
+                    language=r.get("language"),
                     status=r["status"]
                 )
 
@@ -386,6 +388,8 @@ class MediaDB:
                     category=r["category"],
                     source=r["source"],
                     source_ref=r["source_ref"],
+                    original_title=r.get("original_title"),
+                    language=r.get("language"),
                     status=r["status"]
                 )
 
@@ -397,6 +401,45 @@ class MediaDB:
 
     def get_last_imports(self, limit=5):
         return self.get_wanted_items(limit=limit)
+
+    def get_media_item(self, media_item_id: int) -> Media | None:
+        query = """
+            SELECT
+                mi.*,
+                ps.status,
+                ei.source AS ext_source,
+                ei.external_id
+            FROM media_items mi
+            LEFT JOIN processing_state ps ON ps.media_item_id = mi.id
+            LEFT JOIN external_ids ei ON ei.media_item_id = mi.id
+            WHERE mi.id = %s
+        """
+
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, (media_item_id,))
+            rows = cur.fetchall()
+
+        if not rows:
+            return None
+
+        item = Media(
+            id=rows[0]["id"],
+            title=rows[0]["title"],
+            year=rows[0]["year"],
+            media_type=rows[0]["media_type"],
+            category=rows[0]["category"],
+            source=rows[0]["source"],
+            source_ref=rows[0]["source_ref"],
+            original_title=rows[0].get("original_title"),
+            language=rows[0].get("language"),
+            status=rows[0]["status"]
+        )
+
+        for r in rows:
+            if r.get("ext_source"):
+                item.external_ids[r["ext_source"]] = r["external_id"]
+
+        return item
         
     def get_services(self) -> 'list[Service]':
             """
