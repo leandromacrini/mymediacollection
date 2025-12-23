@@ -62,6 +62,30 @@ def radarr_get_all_movies(db: db_core.MediaDB | None = None) -> List[RadarrMedia
         result.append(media)
     return result
 
+def radarr_get_root_folders(db: db_core.MediaDB | None = None) -> list[dict]:
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/rootfolder", headers=cfg["headers"])
+    if r.status_code != 200:
+        print(f"Error fetching Radarr root folders: {r.status_code}")
+        return []
+    return [
+        {"id": item.get("id"), "path": item.get("path")}
+        for item in r.json()
+        if item.get("id") is not None
+    ]
+
+def radarr_get_quality_profiles(db: db_core.MediaDB | None = None) -> list[dict]:
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/qualityprofile", headers=cfg["headers"])
+    if r.status_code != 200:
+        print(f"Error fetching Radarr quality profiles: {r.status_code}")
+        return []
+    return [
+        {"id": item.get("id"), "name": item.get("name")}
+        for item in r.json()
+        if item.get("id") is not None
+    ]
+
 def radarr_get_by_title_year(title: str, year: int, db: db_core.MediaDB | None = None) -> RadarrMedia | None:
     """
     Check if a movie exists in Radarr by title/year.

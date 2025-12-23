@@ -4,8 +4,38 @@
 <style>
     .wanted-table th,
     .wanted-table td {
-        padding: 0.85rem 1rem;
+        padding: 1.1rem 1rem;
         vertical-align: middle;
+    }
+    .wanted-table thead th {
+        background: #f8f9fb;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08);
+    }
+    .wanted-table tbody tr {
+        background: #fff;
+        border-bottom: 1px solid #e8edf2;
+    }
+    .wanted-table tbody tr:nth-child(odd) {
+        background: #fbfcfe;
+    }
+    .wanted-table tbody tr:hover {
+        background: #f1f5f9;
+    }
+    .wanted-title {
+        font-size: 1.02rem;
+        font-weight: 700;
+        color: #1f2a37;
+    }
+    .wanted-meta {
+        font-size: 0.88rem;
+        color: #6c757d;
+    }
+    .wanted-year {
+        font-weight: 600;
+        color: #425466;
     }
     .wanted-actions .btn {
         border-width: 1px;
@@ -36,6 +66,14 @@
         background: #02a9ff;
         color: #06283d;
     }
+    .btn-radarr {
+        border-color: #f6a000;
+        color: #7a4a00;
+    }
+    .btn-radarr:hover {
+        background: #f6a000;
+        color: #2b1a00;
+    }
     .badge-imdb {
         background: #f5c518;
         color: #111;
@@ -47,6 +85,10 @@
     .badge-anilist {
         background: #02a9ff;
         color: #06283d;
+    }
+    .badge-radarr {
+        background: #f6a000;
+        color: #2b1a00;
     }
 </style>
 
@@ -62,7 +104,7 @@
     Contenuti desiderati. Da qui puoi identificare correttamente i media tramite database esterni.
 </p>
 
-<form id="bulk-delete-form" method="post" action="{{ url_for('wanted_bulk_delete') }}"></form>
+<form id="bulk-delete-form" method="post" action="{{ url_for('wanted.wanted_bulk_delete') }}"></form>
 
 <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
     <div class="input-group input-group-sm" style="max-width: 320px;">
@@ -78,15 +120,44 @@
     <button type="button" class="btn btn-sm btn-danger" id="bulk-delete-btn" data-bs-toggle="modal" data-bs-target="#bulkDeleteModal" disabled>
         Elimina selezionati
     </button>
+    <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-radarr-btn" data-bs-toggle="modal" data-bs-target="#bulkRadarrModal" disabled>
+        <i class="bi bi-cloud-download"></i>
+        Invia a Radarr
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-dark" id="bulk-merge-btn" data-bs-toggle="modal" data-bs-target="#mergeWantedModal" disabled>
+        <i class="bi bi-layers"></i>
+        Merge selezionati
+    </button>
+</div>
+
+<div class="d-flex flex-wrap gap-3 align-items-center mb-3 p-2 border rounded-3 bg-light">
+    <div class="input-group input-group-sm" style="max-width: 220px;">
+        <span class="input-group-text">Tipo</span>
+        <select id="wanted-type-filter" class="form-select">
+            <option value="all">Tutti</option>
+            <option value="movie">Movie</option>
+            <option value="series">Series</option>
+        </select>
+    </div>
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="wanted-radarr-eligible">
+        <label class="form-check-label" for="wanted-radarr-eligible">Inviabili Radarr</label>
+    </div>
+    <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="wanted-missing-ids">
+        <label class="form-check-label" for="wanted-missing-ids">ID da sistemare</label>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="wanted-clear-filters">Reset filtri</button>
 </div>
 
 <div class="card border-0 shadow-sm">
-    <div class="card-body p-0">
+    <div class="card-body p-0" style="overflow: auto;">
         <table id="wanted_table" class="table table-hover align-middle mb-0 wanted-table">
             <thead class="table-light">
                 <tr>
                     <th class="text-center" style="width: 40px;"></th>
-                    <th>Media</th>
+                    <th style="min-width: 280px;">Media</th>
+                    <th style="width: 90px;">Anno</th>
                     <th>Info</th>
                     <th>Identificazione</th>
                     <th>Azioni</th>
@@ -96,23 +167,44 @@
 
             <tbody>
             {% for item in items %}
-                <tr>
+                {% set tmdb_id = item.external_ids.get('tmdb') %}
+                {% set in_radarr = tmdb_id and (tmdb_id in radarr_tmdb) %}
+                {% set missing_external = false %}
+                {% if item.media_type == "movie" and not tmdb_id %}
+                    {% set missing_external = true %}
+                {% endif %}
+                {% if item.media_type == "series" and not item.external_ids.get('tvdb') %}
+                    {% set missing_external = true %}
+                {% endif %}
+                {% if item.category == "anime" and not item.external_ids.get('anilist') %}
+                    {% set missing_external = true %}
+                {% endif %}
+                <tr data-media-type="{{ item.media_type }}"
+                    data-has-tmdb="{{ '1' if tmdb_id else '0' }}"
+                    data-in-radarr="{{ '1' if in_radarr else '0' }}"
+                    data-missing-external="{{ '1' if missing_external else '0' }}">
 
                     <td class="text-center">
                         <input class="form-check-input wanted-select"
                                type="checkbox"
                                name="media_ids"
                                value="{{ item.id }}"
+                               data-media-type="{{ item.media_type }}"
+                               data-has-tmdb="{{ '1' if tmdb_id else '0' }}"
                                form="bulk-delete-form">
                     </td>
 
                     <!-- MEDIA -->
                     <td>
-                        <strong>{{ item.title }}</strong><br>
-                        <small class="text-muted">{{ item.year }}</small>
+                        <div class="wanted-title">{{ item.title }}</div>
                         {% if item.original_title and item.original_title != item.title %}
-                            <br><small class="text-muted">Orig: {{ item.original_title }}</small>
+                            <div class="wanted-meta">Orig: {{ item.original_title }}</div>
                         {% endif %}
+                    </td>
+
+                    <!-- YEAR -->
+                    <td class="wanted-year">
+                        {{ item.year }}
                     </td>
 
                     <!-- INFO -->
@@ -173,6 +265,22 @@
                             AniList
                         </a>
                     {% endif %}
+
+                    {% if item.media_type == "movie" %}
+                        {% if tmdb_id %}
+                            {% if in_radarr %}
+                                <a class="badge badge-radarr text-decoration-none"
+                                   href="{{ radarr_url }}/movie/{{ tmdb_id }}"
+                                   target="_blank"
+                                   rel="noopener"
+                                   data-bs-toggle="tooltip"
+                                   data-bs-placement="top"
+                                   title="Radarr {{ item.external_ids.get('radarr') }}">
+                                    Radarr
+                                </a>
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
                 </div>
             </td>
 
@@ -196,6 +304,25 @@
                                     <i class="bi bi-film"></i>
                                     TMDB
                                 </button>
+                            {% endif %}
+
+                            {% if item.media_type == "movie" %}
+                                {% if tmdb_id %}
+                                    <button class="btn btn-sm btn-radarr d-inline-flex align-items-center gap-1 radarr-add-btn"
+                                            data-bs-toggle="modal"
+                                            data-bs-target="#radarrAddModal"
+                                            data-media-id="{{ item.id }}"
+                                            data-title="{{ item.title }}"
+                                            {% if in_radarr %}disabled{% endif %}>
+                                        <i class="bi bi-cloud-download"></i>
+                                        Radarr
+                                    </button>
+                                {% else %}
+                                    <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" disabled>
+                                        <i class="bi bi-cloud-download"></i>
+                                        TMDB richiesto
+                                    </button>
+                                {% endif %}
                             {% endif %}
 
                             {% if item.category == "anime" %}
@@ -250,7 +377,7 @@
                                         <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
                                     </div>
                                 </div>
-                                <div class="alert alert-info">
+                                <div class="alert alert-info lookup-loading d-none">
                                     Ricerca TVDB in corso...
                                 </div>
 
@@ -300,7 +427,7 @@
                                         <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
                                     </div>
                                 </div>
-                                <div class="alert alert-info">
+                                <div class="alert alert-info lookup-loading d-none">
                                     Ricerca TMDB in corso...
                                 </div>
 
@@ -348,7 +475,7 @@
                                         <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
                                     </div>
                                 </div>
-                                <div class="alert alert-info">
+                                <div class="alert alert-info lookup-loading d-none">
                                     Ricerca AniList in corso...
                                 </div>
 
@@ -409,7 +536,7 @@
                                     Annulla
                                 </button>
                                 <form method="post"
-                                      action="{{ url_for('wanted_delete', media_item_id=item.id) }}">
+                                      action="{{ url_for('wanted.wanted_delete', media_item_id=item.id) }}">
                                     <button type="submit" class="btn btn-danger d-inline-flex align-items-center gap-1">
                                         <i class="bi bi-trash"></i>
                                         Elimina
@@ -424,6 +551,165 @@
             {% endfor %}
             </tbody>
         </table>
+
+        <!-- ================= RADARR SINGLE ADD MODAL ================= -->
+        <div class="modal fade"
+             id="radarrAddModal"
+             tabindex="-1"
+             aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title">Invia a Radarr</h5>
+                        <button type="button" class="btn-close"
+                                data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="mb-2 text-muted" id="radarr-add-title">Seleziona root e profilo qualità.</div>
+                        <input type="hidden" id="radarr-add-media-id" value="">
+                        <input type="hidden" id="radarr-default-root" value="{{ radarr_defaults.root_folder or '' }}">
+                        <input type="hidden" id="radarr-default-profile" value="{{ radarr_defaults.profile_id or '' }}">
+                        <div class="mb-3">
+                            <label class="form-label">Root folder</label>
+                            <select class="form-select form-select-sm" id="radarr-root-select">
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Quality profile</label>
+                            <select class="form-select form-select-sm" id="radarr-profile-select">
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="alert alert-info d-none" id="radarr-add-status">Invio a Radarr in corso...</div>
+                        <div class="alert alert-danger d-none" id="radarr-add-error">Errore durante il caricamento.</div>
+                    </div>
+
+                    <div class="modal-footer border-0">
+                        <button class="btn btn-light"
+                                data-bs-dismiss="modal">
+                            Annulla
+                        </button>
+                        <button type="button"
+                                class="btn btn-primary d-inline-flex align-items-center gap-1"
+                                id="radarr-add-confirm">
+                            <i class="bi bi-cloud-download"></i>
+                            Invia
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= RADARR BULK ADD MODAL ================= -->
+        <div class="modal fade"
+             id="bulkRadarrModal"
+             tabindex="-1"
+             aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title">Invia selezionati a Radarr</h5>
+                        <button type="button" class="btn-close"
+                                data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <p class="mb-2">
+                            Selezionati: <strong id="bulk-radarr-count">0</strong>
+                        </p>
+                        <p class="text-muted small mb-2" id="bulk-radarr-note">
+                            Solo movie con TMDB non presenti in Radarr.
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label">Root folder</label>
+                            <select class="form-select form-select-sm" id="bulk-radarr-root">
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Quality profile</label>
+                            <select class="form-select form-select-sm" id="bulk-radarr-profile">
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="alert alert-info d-none" id="bulk-radarr-status">Invio a Radarr in corso...</div>
+                        <div class="alert alert-danger d-none" id="bulk-radarr-error">Errore durante il caricamento.</div>
+                    </div>
+
+                    <div class="modal-footer border-0">
+                        <button class="btn btn-light"
+                                data-bs-dismiss="modal">
+                            Annulla
+                        </button>
+                        <button type="button"
+                                class="btn btn-primary d-inline-flex align-items-center gap-1"
+                                id="bulk-radarr-confirm">
+                            <i class="bi bi-cloud-download"></i>
+                            Invia
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= MERGE WANTED MODAL ================= -->
+        <div class="modal fade"
+             id="mergeWantedModal"
+             tabindex="-1"
+             aria-hidden="true">
+            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                <div class="modal-content">
+
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title">Merge Wanted selezionati</h5>
+                        <button type="button" class="btn-close"
+                                data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="alert alert-info" id="merge-preview-status">
+                            Caricamento anteprima merge...
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="fw-semibold mb-1">Gruppi mergiabili</div>
+                            <div id="merge-preview-groups" class="small text-muted">Nessun gruppo.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <div class="fw-semibold mb-1">Non matchano</div>
+                            <div id="merge-preview-singletons" class="small text-muted">Nessun elemento.</div>
+                        </div>
+
+                        <div>
+                            <div class="fw-semibold mb-1">Esclusi</div>
+                            <div id="merge-preview-excluded" class="small text-muted">Nessun elemento.</div>
+                        </div>
+                    </div>
+
+                    <div class="modal-footer border-0">
+                        <div class="me-auto small text-muted" id="merge-preview-summary"></div>
+                        <button class="btn btn-light"
+                                data-bs-dismiss="modal">
+                            Annulla
+                        </button>
+                        <button type="button"
+                                class="btn btn-primary d-inline-flex align-items-center gap-1"
+                                id="merge-confirm-btn">
+                            <i class="bi bi-check2-circle"></i>
+                            Esegui merge
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
 
         <!-- ================= BULK DELETE MODAL ================= -->
         <div class="modal fade"
@@ -478,15 +764,43 @@
 <script>
 $(document).ready(function() {
     var wantedSearchTerm = '';
-    $.fn.dataTable.ext.search.push(function(settings, data) {
+    var wantedTypeFilter = 'all';
+    var wantedRadarrEligibleOnly = false;
+    var wantedMissingIdsOnly = false;
+
+    function isRadarrEligibleRow($row) {
+        return $row.data('media-type') === 'movie' &&
+            ($row.data('has-tmdb') === 1 || $row.data('has-tmdb') === '1') &&
+            !($row.data('in-radarr') === 1 || $row.data('in-radarr') === '1');
+    }
+
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
         if (settings.nTable.id !== 'wanted_table') {
             return true;
         }
-        if (!wantedSearchTerm) {
+        var title = (data[1] || '').toLowerCase();
+        var matchesSearch = !wantedSearchTerm || title.indexOf(wantedSearchTerm) !== -1;
+        if (!matchesSearch) {
+            return false;
+        }
+        var row = settings.aoData[dataIndex] && settings.aoData[dataIndex].nTr;
+        if (!row) {
             return true;
         }
-        var title = (data[1] || '').toLowerCase();
-        return title.indexOf(wantedSearchTerm) !== -1;
+        var $row = $(row);
+        var mediaType = $row.data('media-type');
+        var missingExternal = $row.data('missing-external');
+
+        if (wantedTypeFilter !== 'all' && mediaType !== wantedTypeFilter) {
+            return false;
+        }
+        if (wantedRadarrEligibleOnly && !isRadarrEligibleRow($row)) {
+            return false;
+        }
+        if (wantedMissingIdsOnly && !(missingExternal === 1 || missingExternal === '1')) {
+            return false;
+        }
+        return true;
     });
 
     var table = $('#wanted_table').DataTable({
@@ -494,11 +808,11 @@ $(document).ready(function() {
         ordering: true,
         searching: false,
         order: [[1, "asc"]],
-        pageLength: 25,
-        lengthMenu: [10, 25, 50, 100],
+        pageLength: 50,
+        lengthMenu: [25, 50, 100, 200],
         columnDefs: [
-            { orderable: false, targets: [0, 4, 5] },
-            { searchable: false, targets: [0, 2, 3, 4, 5] }
+            { orderable: false, targets: [0, 5, 6] },
+            { searchable: false, targets: [0, 3, 4, 5, 6] }
         ],
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
@@ -510,11 +824,31 @@ $(document).ready(function() {
         });
     }
 
+    function getRadarrEligibleIds() {
+        return $('.wanted-select:checked').map(function() {
+            var $row = $(this).closest('tr');
+            if (!isRadarrEligibleRow($row)) {
+                return null;
+            }
+            return $(this).val();
+        }).get().filter(function(id) { return id; });
+    }
+
     function updateBulkState() {
         var count = $('.wanted-select:checked').length;
+        var eligible = getRadarrEligibleIds();
+        var excluded = count - eligible.length;
         $('#bulk-delete-btn').prop('disabled', count === 0);
         $('#bulk-delete-confirm').prop('disabled', count === 0);
         $('#bulk-delete-count').text(count);
+        $('#bulk-radarr-btn').prop('disabled', eligible.length === 0);
+        $('#bulk-radarr-count').text(eligible.length);
+        $('#bulk-merge-btn').prop('disabled', count === 0);
+        if (count === 0) {
+            $('#bulk-radarr-note').text('Solo movie con TMDB non presenti in Radarr.');
+        } else {
+            $('#bulk-radarr-note').text('Inviabili: ' + eligible.length + '. Esclusi: ' + excluded + '.');
+        }
     }
 
     function applySearch() {
@@ -523,6 +857,39 @@ $(document).ready(function() {
         table.draw();
         updateBulkState();
     }
+
+    function getSelectedIds() {
+        return $('.wanted-select:checked').map(function() { return $(this).val(); }).get();
+    }
+
+    $('#wanted-type-filter').on('change', function() {
+        wantedTypeFilter = $(this).val() || 'all';
+        table.draw();
+        updateBulkState();
+    });
+
+    $('#wanted-radarr-eligible').on('change', function() {
+        wantedRadarrEligibleOnly = $(this).is(':checked');
+        table.draw();
+        updateBulkState();
+    });
+
+    $('#wanted-missing-ids').on('change', function() {
+        wantedMissingIdsOnly = $(this).is(':checked');
+        table.draw();
+        updateBulkState();
+    });
+
+    $('#wanted-clear-filters').on('click', function() {
+        wantedTypeFilter = 'all';
+        wantedRadarrEligibleOnly = false;
+        wantedMissingIdsOnly = false;
+        $('#wanted-type-filter').val('all');
+        $('#wanted-radarr-eligible').prop('checked', false);
+        $('#wanted-missing-ids').prop('checked', false);
+        table.draw();
+        updateBulkState();
+    });
 
     $('#wanted-title-search').on('input keyup change', function(e) {
         if (e.type === 'keyup' && e.key && e.key !== 'Enter') {
@@ -548,6 +915,7 @@ $(document).ready(function() {
     });
 
     $('#bulkDeleteModal').on('show.bs.modal', updateBulkState);
+    $('#bulkRadarrModal').on('show.bs.modal', updateBulkState);
 
     function renderLookupResults(provider, items, listEl) {
         if (!items || !items.length) {
@@ -583,6 +951,8 @@ $(document).ready(function() {
         var provider = listEl.data('provider');
         var mediaId = listEl.data('media-id');
         var query = queryOverride || listEl.closest('.modal-body').find('.lookup-query').val() || '';
+        var modalBody = listEl.closest('.modal-body');
+        modalBody.find('.lookup-loading').removeClass('d-none');
         listEl.html('<li class="list-group-item text-muted">Ricerca in corso...</li>');
         $.getJSON('/api/wanted/' + mediaId + '/lookup/' + provider, { q: query }, function(resp) {
             var items = resp && resp.items ? resp.items : [];
@@ -591,8 +961,10 @@ $(document).ready(function() {
                 return item;
             });
             renderLookupResults(provider, items, listEl);
+            modalBody.find('.lookup-loading').addClass('d-none');
         }).fail(function() {
             listEl.html('<li class="list-group-item text-danger">Errore nella ricerca.</li>');
+            modalBody.find('.lookup-loading').addClass('d-none');
         });
     }
 
@@ -634,6 +1006,259 @@ $(document).ready(function() {
             location.reload();
         }).fail(function() {
             button.prop('disabled', false).text('Seleziona');
+        });
+    });
+
+    var radarrOptionsCache = null;
+
+    function populateRadarrSelect($select, items, labelKey, valueKey) {
+        if (!items || !items.length) {
+            $select.html('<option value="">Nessuna opzione disponibile</option>');
+            return;
+        }
+        var options = items.map(function(item) {
+            var value = item[valueKey] || item.id;
+            var label = item[labelKey] || item.path || item.name || item.id;
+            return '<option value="' + value + '">' + label + '</option>';
+        }).join('');
+        $select.html(options);
+    }
+
+    function loadRadarrOptions($rootSelect, $profileSelect, $errorEl) {
+        $errorEl.addClass('d-none');
+        if (radarrOptionsCache) {
+            populateRadarrSelect($rootSelect, radarrOptionsCache.root_folders, 'path', 'path');
+            populateRadarrSelect($profileSelect, radarrOptionsCache.profiles, 'name', 'id');
+            applyRadarrDefaults($rootSelect, $profileSelect);
+            return;
+        }
+        $rootSelect.html('<option value="">Caricamento...</option>');
+        $profileSelect.html('<option value="">Caricamento...</option>');
+        $.getJSON('/api/radarr/options', function(resp) {
+            radarrOptionsCache = resp || {};
+            populateRadarrSelect($rootSelect, radarrOptionsCache.root_folders, 'path', 'path');
+            populateRadarrSelect($profileSelect, radarrOptionsCache.profiles, 'name', 'id');
+            applyRadarrDefaults($rootSelect, $profileSelect);
+        }).fail(function() {
+            $errorEl.removeClass('d-none').text('Errore nel caricamento delle opzioni Radarr.');
+            $rootSelect.html('<option value="">Errore</option>');
+            $profileSelect.html('<option value="">Errore</option>');
+        });
+    }
+
+    function applyRadarrDefaults($rootSelect, $profileSelect) {
+        var defaultRoot = $('#radarr-default-root').val();
+        var defaultProfile = $('#radarr-default-profile').val();
+        if (defaultRoot) {
+            $rootSelect.val(defaultRoot);
+        }
+        if (defaultProfile) {
+            $profileSelect.val(defaultProfile);
+        }
+    }
+
+    $(document).on('click', '.radarr-add-btn', function() {
+        var mediaId = $(this).data('media-id');
+        var title = $(this).data('title');
+        $('#radarr-add-media-id').val(mediaId);
+        $('#radarr-add-title').text('Seleziona root e profilo per: ' + title);
+    });
+
+    $('#radarrAddModal').on('show.bs.modal', function() {
+        loadRadarrOptions(
+            $('#radarr-root-select'),
+            $('#radarr-profile-select'),
+            $('#radarr-add-error')
+        );
+    });
+
+    $('#bulkRadarrModal').on('show.bs.modal', function() {
+        loadRadarrOptions(
+            $('#bulk-radarr-root'),
+            $('#bulk-radarr-profile'),
+            $('#bulk-radarr-error')
+        );
+    });
+
+    $('#radarr-add-confirm').on('click', function() {
+        var button = $(this);
+        var mediaId = $('#radarr-add-media-id').val();
+        var root = $('#radarr-root-select').val();
+        var profile = $('#radarr-profile-select').val();
+        if (!mediaId || !root || !profile) {
+            $('#radarr-add-error').removeClass('d-none').text('Seleziona root e profilo.');
+            return;
+        }
+        $('#radarr-add-error').addClass('d-none');
+        $('#radarr-add-status').removeClass('d-none').text('Invio a Radarr in corso...');
+        button.prop('disabled', true).text('Invio...');
+        $.ajax({
+            url: '/api/wanted/' + mediaId + '/radarr/add',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ root_folder: root, profile_id: profile })
+        }).done(function() {
+            $('#radarr-add-status').removeClass('d-none').text('Inviato a Radarr. Aggiorno la lista...');
+            setTimeout(function() {
+                location.reload();
+            }, 900);
+        }).fail(function() {
+            button.prop('disabled', false).text('Invia');
+            $('#radarr-add-status').addClass('d-none');
+            $('#radarr-add-error').removeClass('d-none').text('Errore durante il push a Radarr.');
+        });
+    });
+
+    $('#bulk-radarr-confirm').on('click', function() {
+        var button = $(this);
+        var root = $('#bulk-radarr-root').val();
+        var profile = $('#bulk-radarr-profile').val();
+        var mediaIds = getRadarrEligibleIds();
+        if (!mediaIds.length || !root || !profile) {
+            $('#bulk-radarr-error').removeClass('d-none').text('Seleziona elementi, root e profilo.');
+            return;
+        }
+        $('#bulk-radarr-error').addClass('d-none');
+        $('#bulk-radarr-status').removeClass('d-none').text('Invio a Radarr in corso...');
+        button.prop('disabled', true).text('Invio...');
+        $.ajax({
+            url: '/api/wanted/radarr/bulk_add',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ media_ids: mediaIds, root_folder: root, profile_id: profile })
+        }).done(function() {
+            $('#bulk-radarr-status').removeClass('d-none').text('Inviati a Radarr. Aggiorno la lista...');
+            setTimeout(function() {
+                location.reload();
+            }, 900);
+        }).fail(function() {
+            button.prop('disabled', false).text('Invia');
+            $('#bulk-radarr-status').addClass('d-none');
+            $('#bulk-radarr-error').removeClass('d-none').text('Errore durante il push bulk.');
+        });
+    });
+
+    var mergePreviewData = null;
+
+    function renderMergeItems(items) {
+        return items.map(function(item) {
+            var meta = [];
+            if (item.year) {
+                meta.push(item.year);
+            }
+            if (item.media_type) {
+                meta.push(item.media_type);
+            }
+            if (item.category) {
+                meta.push(item.category);
+            }
+            var metaText = meta.length ? ' (' + meta.join(', ') + ')' : '';
+            return '<div class="mb-1">#' + item.id + ' - ' + item.title + metaText + '</div>';
+        }).join('');
+    }
+
+    function renderExcluded(items) {
+        var labels = {
+            invalid_id: 'ID non valido',
+            not_found: 'Elemento non trovato',
+            missing_anilist: 'Manca AniList ID',
+            missing_tvdb: 'Manca TVDB ID',
+            missing_tmdb: 'Manca TMDB ID'
+        };
+        return items.map(function(item) {
+            var reason = labels[item.reason] || item.reason || 'Escluso';
+            var title = item.title ? ' - ' + item.title : '';
+            return '<div class="mb-1">#' + item.id + title + ' · ' + reason + '</div>';
+        }).join('');
+    }
+
+    function renderMergePreview(preview) {
+        mergePreviewData = preview;
+        var groups = preview.merge_groups || [];
+        var singletons = preview.singletons || [];
+        var excluded = preview.excluded || [];
+
+        if (groups.length) {
+            var html = groups.map(function(group) {
+                var header = '<div class="fw-semibold mt-2">[' + group.source.toUpperCase() + ' ' + group.external_id + '] keep #' + group.keep_id + '</div>';
+                return header + renderMergeItems(group.items);
+            }).join('');
+            $('#merge-preview-groups').html(html);
+        } else {
+            $('#merge-preview-groups').html('<div class="text-muted">Nessun gruppo mergiabile.</div>');
+        }
+
+        if (singletons.length) {
+            $('#merge-preview-singletons').html(renderMergeItems(singletons));
+        } else {
+            $('#merge-preview-singletons').html('<div class="text-muted">Nessun elemento.</div>');
+        }
+
+        if (excluded.length) {
+            $('#merge-preview-excluded').html(renderExcluded(excluded));
+        } else {
+            $('#merge-preview-excluded').html('<div class="text-muted">Nessun elemento.</div>');
+        }
+
+        var summary = 'Gruppi: ' + groups.length + ' · Non matchano: ' + singletons.length + ' · Esclusi: ' + excluded.length;
+        $('#merge-preview-summary').text(summary);
+        $('#merge-confirm-btn').prop('disabled', groups.length === 0);
+    }
+
+    $('#mergeWantedModal').on('show.bs.modal', function() {
+        var ids = getSelectedIds();
+        mergePreviewData = null;
+        $('#merge-preview-status').removeClass('d-none').text('Caricamento anteprima merge...');
+        $('#merge-preview-groups').html('<div class="text-muted">Nessun gruppo.</div>');
+        $('#merge-preview-singletons').html('<div class="text-muted">Nessun elemento.</div>');
+        $('#merge-preview-excluded').html('<div class="text-muted">Nessun elemento.</div>');
+        $('#merge-preview-summary').text('');
+        $('#merge-confirm-btn').prop('disabled', true);
+
+        if (!ids.length) {
+            $('#merge-preview-status').removeClass('d-none').text('Nessun elemento selezionato.');
+            return;
+        }
+
+        $.ajax({
+            url: '/api/wanted/merge/preview',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ media_ids: ids })
+        }).done(function(resp) {
+            $('#merge-preview-status').addClass('d-none');
+            renderMergePreview(resp);
+        }).fail(function() {
+            $('#merge-preview-status').removeClass('d-none').text('Errore durante il caricamento della preview.');
+        });
+    });
+
+    $('#merge-confirm-btn').on('click', function() {
+        var button = $(this);
+        if (!mergePreviewData || !mergePreviewData.merge_groups || !mergePreviewData.merge_groups.length) {
+            return;
+        }
+        var groupsPayload = mergePreviewData.merge_groups.map(function(group) {
+            var mergeIds = group.items.map(function(item) { return item.id; })
+                .filter(function(id) { return id !== group.keep_id; });
+            return {
+                keep_id: group.keep_id,
+                merge_ids: mergeIds
+            };
+        });
+        button.prop('disabled', true).text('Merge in corso...');
+        $.ajax({
+            url: '/api/wanted/merge/commit',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ groups: groupsPayload })
+        }).done(function() {
+            button.text('Completato');
+            setTimeout(function() {
+                location.reload();
+            }, 900);
+        }).fail(function() {
+            button.prop('disabled', false).text('Esegui merge');
         });
     });
 

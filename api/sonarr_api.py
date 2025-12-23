@@ -64,6 +64,30 @@ def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia
         result.append(media)
     return result
 
+def sonarr_get_root_folders(db: db_core.MediaDB | None = None) -> list[dict]:
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/rootfolder", headers=cfg["headers"])
+    if r.status_code != 200:
+        print(f"Error fetching Sonarr root folders: {r.status_code}")
+        return []
+    return [
+        {"id": item.get("id"), "path": item.get("path")}
+        for item in r.json()
+        if item.get("id") is not None
+    ]
+
+def sonarr_get_quality_profiles(db: db_core.MediaDB | None = None) -> list[dict]:
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/qualityprofile", headers=cfg["headers"])
+    if r.status_code != 200:
+        print(f"Error fetching Sonarr quality profiles: {r.status_code}")
+        return []
+    return [
+        {"id": item.get("id"), "name": item.get("name")}
+        for item in r.json()
+        if item.get("id") is not None
+    ]
+
 def sonarr_get_by_title(title: str, db: db_core.MediaDB | None = None) -> Optional[SonarrMedia]:
     """
     Check if a series exists in Sonarr by title.

@@ -26,22 +26,71 @@
         {% for setting in service.settings %}
           {% set key_lower = setting.key|lower %}
           {% set wide = 'url' in key_lower or 'path' in key_lower %}
+          {% set setting_value = setting.value if setting.value is not none else '' %}
           <div class="{{ 'col-12' if wide else 'col-12 col-md-6' }}">
             <label class="form-label d-flex align-items-center justify-content-between">
               <span>{{ setting.label }}</span>
               <small class="text-muted">{{ setting.key }}</small>
             </label>
-            {% if setting.value_type == 'boolean' %}
+            {% if setting.key == 'radarr_root_folder' %}
               <select class="form-select" name="setting_{{ setting.key }}">
-                <option value="true" {% if setting.value=='true' %}selected{% endif %}>True</option>
-                <option value="false" {% if setting.value=='false' %}selected{% endif %}>False</option>
+                {% if radarr_options.root_folders %}
+                  <option value="">Seleziona una cartella</option>
+                  {% for opt in radarr_options.root_folders %}
+                    {% set selected = setting_value == opt.path or setting_value == opt.id|string %}
+                    <option value="{{ opt.path }}" {% if selected %}selected{% endif %}>{{ opt.path }}</option>
+                  {% endfor %}
+                {% else %}
+                  <option value="{{ setting_value }}">{{ setting_value or "Configura Radarr per caricare le cartelle" }}</option>
+                {% endif %}
+              </select>
+            {% elif setting.key == 'radarr_profile_id' %}
+              <select class="form-select" name="setting_{{ setting.key }}">
+                {% if radarr_options.profiles %}
+                  <option value="">Seleziona un profilo</option>
+                  {% for opt in radarr_options.profiles %}
+                    {% set selected = setting_value == opt.id|string %}
+                    <option value="{{ opt.id }}" {% if selected %}selected{% endif %}>{{ opt.name }}</option>
+                  {% endfor %}
+                {% else %}
+                  <option value="{{ setting_value }}">{{ setting_value or "Configura Radarr per caricare i profili" }}</option>
+                {% endif %}
+              </select>
+            {% elif setting.key == 'sonarr_root_folder' %}
+              <select class="form-select" name="setting_{{ setting.key }}">
+                {% if sonarr_options.root_folders %}
+                  <option value="">Seleziona una cartella</option>
+                  {% for opt in sonarr_options.root_folders %}
+                    {% set selected = setting_value == opt.path or setting_value == opt.id|string %}
+                    <option value="{{ opt.path }}" {% if selected %}selected{% endif %}>{{ opt.path }}</option>
+                  {% endfor %}
+                {% else %}
+                  <option value="{{ setting_value }}">{{ setting_value or "Configura Sonarr per caricare le cartelle" }}</option>
+                {% endif %}
+              </select>
+            {% elif setting.key == 'sonarr_profile_id' %}
+              <select class="form-select" name="setting_{{ setting.key }}">
+                {% if sonarr_options.profiles %}
+                  <option value="">Seleziona un profilo</option>
+                  {% for opt in sonarr_options.profiles %}
+                    {% set selected = setting_value == opt.id|string %}
+                    <option value="{{ opt.id }}" {% if selected %}selected{% endif %}>{{ opt.name }}</option>
+                  {% endfor %}
+                {% else %}
+                  <option value="{{ setting_value }}">{{ setting_value or "Configura Sonarr per caricare i profili" }}</option>
+                {% endif %}
+              </select>
+            {% elif setting.value_type in ['boolean', 'bool'] %}
+              <select class="form-select" name="setting_{{ setting.key }}">
+                <option value="true" {% if setting_value|string == 'true' %}selected{% endif %}>True</option>
+                <option value="false" {% if setting_value|string == 'false' %}selected{% endif %}>False</option>
               </select>
             {% elif setting.value_type == 'password' %}
-              <input type="password" class="form-control" name="setting_{{ setting.key }}" value="{{ setting.value }}">
+              <input type="password" class="form-control" name="setting_{{ setting.key }}" value="{{ setting_value }}">
             {% elif setting.value_type in ['int', 'integer'] %}
-              <input type="number" class="form-control" name="setting_{{ setting.key }}" value="{{ setting.value }}">
+              <input type="number" class="form-control" name="setting_{{ setting.key }}" value="{{ setting_value }}">
             {% else %}
-              <input type="text" class="form-control" name="setting_{{ setting.key }}" value="{{ setting.value }}">
+              <input type="text" class="form-control" name="setting_{{ setting.key }}" value="{{ setting_value }}">
             {% endif %}
           </div>
         {% endfor %}

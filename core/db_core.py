@@ -38,9 +38,11 @@ class ServiceSetting:
         self.value_type = value_type
         self.required = required
 
-    def update_value(self, db: 'MediaDB', new_value):
-        db.set_service_setting(self.id, new_value)
-        self.value = new_value
+    def update_value(self, db: 'MediaDB', new_value) -> bool:
+        updated = db.set_service_setting(self.id, new_value)
+        if updated:
+            self.value = new_value
+        return updated
 
 class Service:
     def __init__(self, id: int,  name: str, description: str, enabled: bool, settings: list[ServiceSetting] = []):
@@ -68,11 +70,11 @@ class Service:
                 for row in rows
             ]
     
-    def save_service_settings(self, db: 'MediaDB'):
+    def save_service_settings(self, db: 'MediaDB') -> int:
             """
             Salva le impostazioni correnti di questo servizio nel DB
             """
-            db.set_service_settings(self.settings)
+            return db.set_service_settings(self.settings)
 
 # ===== CONFIG =====
 DB_HOST = os.environ.get("MMC_DB_HOST")
@@ -147,15 +149,16 @@ class MediaDB:
 
         return media_id, inserted
 
-    def add_external_id(self, media_item_id: int, source: str, external_id: str):
+    def add_external_id(self, media_item_id: int, source: str, external_id: str) -> bool:
         with self.conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO external_ids (media_item_id, source, external_id)
                 VALUES (%s, %s, %s)
                 ON CONFLICT (source, external_id) DO NOTHING
             """, (media_item_id, source, external_id))
+            return cur.rowcount > 0
 
-    def mark_as_wanted(self, media_item_id: int):
+    def mark_as_wanted(self, media_item_id: int) -> bool:
         with self.conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO processing_state (media_item_id, status)
@@ -163,6 +166,7 @@ class MediaDB:
                 ON CONFLICT (media_item_id)
                 DO UPDATE SET status='pending', updated_at=now()
             """, (media_item_id,))
+            return cur.rowcount > 0
 
     def delete_media_item(self, media_item_id: int) -> bool:
         with self.conn.cursor() as cur:
@@ -261,7 +265,7 @@ class MediaDB:
         ]
 
 
-    def mark_as_processed(self, title, year, status="processed"):
+    def mark_as_processed(self, title, year, status="processed") -> bool:
         """
         Mark a media item as processed.
 
@@ -276,6 +280,7 @@ class MediaDB:
                 SET status=%s
                 WHERE title=%s AND year=%s
             """, (status, title, year))
+            return cur.rowcount > 0
 
     def search_media_by_title_year(self, title, year):
         """
@@ -440,6 +445,93 @@ class MediaDB:
                 item.external_ids[r["ext_source"]] = r["external_id"]
 
         return item
+
+    def merge_media_items(self, keep_id: int, merge_ids: list[int]) -> int:
+        """
+        Merge media items by moving references to keep_id and deleting merge_ids.
+        Returns number of deleted items.
+        """
+        if not merge_ids:
+            return 0
+
+        merge_ids = [mid for mid in merge_ids if mid != keep_id]
+        if not merge_ids:
+            return 0
+
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT 1 FROM media_items WHERE id = %s",
+                (keep_id,)
+            )
+            if not cur.fetchone():
+                return 0
+
+            cur.execute(
+                "SELECT 1 FROM processing_state WHERE media_item_id = %s",
+                (keep_id,)
+            )
+            keep_has_state = cur.fetchone() is not None
+
+            cur.execute(
+                """
+                SELECT status, last_step, message, updated_at
+                FROM processing_state
+                WHERE media_item_id = ANY(%s)
+                ORDER BY updated_at DESC NULLS LAST
+                LIMIT 1
+                """,
+                (merge_ids,)
+            )
+            best_state = cur.fetchone()
+
+            cur.execute(
+                """
+                INSERT INTO external_ids (media_item_id, source, external_id)
+                SELECT %s, source, external_id
+                FROM external_ids
+                WHERE media_item_id = ANY(%s)
+                ON CONFLICT (source, external_id) DO NOTHING
+                """,
+                (keep_id, merge_ids)
+            )
+
+            cur.execute(
+                "UPDATE media_files SET media_item_id = %s WHERE media_item_id = ANY(%s)",
+                (keep_id, merge_ids)
+            )
+            cur.execute(
+                "UPDATE downloads SET media_item_id = %s WHERE media_item_id = ANY(%s)",
+                (keep_id, merge_ids)
+            )
+            cur.execute(
+                "UPDATE matches SET media_item_id = %s WHERE media_item_id = ANY(%s)",
+                (keep_id, merge_ids)
+            )
+
+            cur.execute(
+                "DELETE FROM processing_state WHERE media_item_id = ANY(%s)",
+                (merge_ids,)
+            )
+            if best_state and not keep_has_state:
+                cur.execute(
+                    """
+                    INSERT INTO processing_state (media_item_id, status, last_step, message, updated_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    (
+                        keep_id,
+                        best_state["status"],
+                        best_state["last_step"],
+                        best_state["message"],
+                        best_state["updated_at"]
+                    )
+                )
+
+            cur.execute(
+                "DELETE FROM media_items WHERE id = ANY(%s)",
+                (merge_ids,)
+            )
+            return cur.rowcount
         
     def get_services(self) -> 'list[Service]':
             """
@@ -548,7 +640,18 @@ class MediaDB:
             config[row["key"]] = value
         return config
         
-    def set_service_settings(self, settings: 'list[ServiceSetting]'):
+    def set_service_setting(self, setting_id: int, value: str | None) -> bool:
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE service_settings
+                SET value=%s
+                WHERE id=%s
+            """, (value, setting_id))
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def set_service_settings(self, settings: 'list[ServiceSetting]') -> int:
+        updated = 0
         with self.conn.cursor() as cur:
             for setting in settings:
                 cur.execute("""
@@ -556,4 +659,6 @@ class MediaDB:
                     SET value=%s
                     WHERE id=%s
                 """, (setting.value, setting.id))
+                updated += cur.rowcount
         self.conn.commit()
+        return updated

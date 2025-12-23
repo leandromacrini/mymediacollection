@@ -192,6 +192,18 @@ INSERT INTO service_settings (service_id, key, label, value, value_type, require
 SELECT id, 'radarr_api_key', 'Radarr API Key', 'CHANGE_ME', 'string', TRUE FROM services WHERE name='Radarr'
 ON CONFLICT (service_id, key) DO NOTHING;
 
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'radarr_root_folder', 'Radarr Root Folder', '', 'string', FALSE FROM services WHERE name='Radarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'radarr_profile_id', 'Radarr Quality Profile', '', 'int', FALSE FROM services WHERE name='Radarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'radarr_enable_search', 'Radarr Enable Search', 'false', 'boolean', FALSE FROM services WHERE name='Radarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
 -- Sonarr
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
 SELECT id, 'sonarr_url', 'Sonarr URL', 'REMOVED', 'string', TRUE FROM services WHERE name='Sonarr'
@@ -199,6 +211,18 @@ ON CONFLICT (service_id, key) DO NOTHING;
 
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
 SELECT id, 'sonarr_api_key', 'Sonarr API Key', 'CHANGE_ME', 'string', TRUE FROM services WHERE name='Sonarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'sonarr_root_folder', 'Sonarr Root Folder', '', 'string', FALSE FROM services WHERE name='Sonarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'sonarr_profile_id', 'Sonarr Quality Profile', '', 'int', FALSE FROM services WHERE name='Sonarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'sonarr_enable_search', 'Sonarr Enable Search', 'false', 'boolean', FALSE FROM services WHERE name='Sonarr'
 ON CONFLICT (service_id, key) DO NOTHING;
 
 -- Plex Web

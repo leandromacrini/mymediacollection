@@ -72,7 +72,7 @@
                     </button>
 
                     <form method="POST"
-                          action="{{ url_for('add_wanted_anime_route') }}">
+                          action="{{ url_for('animeworld.add_wanted_anime_route') }}">
                         <input type="hidden" name="anime_id" value="{{ anime.source_id }}">
                         <input type="hidden" name="anime_link" value="{{ anime.link }}">
                         <input type="hidden" name="title" value="{{ anime.title }}">
