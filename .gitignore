@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+.env
+__pycache__/
+uploads/
+*.db
+*.sqlite
+*.log
+.vscode/

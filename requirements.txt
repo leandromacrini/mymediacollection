@@ -1,0 +1,5 @@
+psycopg2-binary>=2.9
+requests>=2.31
+flask>=2.3
+beautifulsoup4>=4.13
+animeworld>=1.6.7

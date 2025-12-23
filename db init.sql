@@ -1,0 +1,229 @@
+-- ===============================================
+-- PostgreSQL schema for media management
+-- Designed for integration with Radarr / Sonarr / Plex / eMule
+-- ===============================================
+
+-- Create a dedicated database
+CREATE DATABASE my_media_collection
+    WITH 
+    OWNER = postgres
+    ENCODING = 'UTF8'
+    LC_COLLATE = 'C'
+    LC_CTYPE = 'C'
+    TEMPLATE = template0;
+
+-- Create a dedicated user
+CREATE USER mmc_user WITH PASSWORD 'CHANGE_ME';
+
+-- Grant all privileges on the database to the user
+GRANT ALL PRIVILEGES ON DATABASE my_media_collection TO mmc_user;
+
+-- 1️⃣ Main table for media items
+CREATE TABLE IF NOT EXISTS media_items (
+    id SERIAL PRIMARY KEY,
+    title TEXT NOT NULL,
+    year INT,
+    media_type TEXT NOT NULL,         -- movie | series | ova | special
+    category TEXT,                    -- anime | film | tv | documentary
+    original_title TEXT,
+    language TEXT,
+    source TEXT NOT NULL,             -- plex | animeworld | text | manual | future
+    source_ref TEXT,                  -- plex path, text line, etc
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_media_items_title_year 
+    ON media_items(title, year);
+
+-- 2️⃣ Table for original media files
+CREATE TABLE IF NOT EXISTS media_files (
+    id SERIAL PRIMARY KEY,
+    media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+    original_path TEXT NOT NULL,
+    basename TEXT,
+    extension TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    UNIQUE(original_path)
+);
+
+-- 3️⃣ External IDs (Radarr/Sonarr/TMDB/IMDB)
+CREATE TABLE IF NOT EXISTS external_ids (
+    id SERIAL PRIMARY KEY,
+    media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+    source TEXT NOT NULL,             -- radarr | sonarr | tmdb | imdb | anilist
+    external_id TEXT NOT NULL,
+    UNIQUE(source, external_id)
+);
+
+-- 4️⃣ Processing state of each media item
+CREATE TABLE IF NOT EXISTS processing_state (
+    media_item_id INT PRIMARY KEY REFERENCES media_items(id) ON DELETE CASCADE,
+    status TEXT NOT NULL,             -- pending | matched | added | downloading | completed | failed | skipped
+    last_step TEXT,                   -- radarr_lookup | manual_choice | download
+    message TEXT,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 5️⃣ Matching decisions
+CREATE TABLE IF NOT EXISTS matches (
+    id SERIAL PRIMARY KEY,
+    media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+    matched_title TEXT,
+    matched_year INT,
+    matched_tmdb_id TEXT,
+    confidence NUMERIC(3,2) DEFAULT 1.0,   -- 1.0 automatic, <1 manual
+    chosen_by TEXT,                        -- auto | user
+    chosen_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- 6️⃣ Sources for downloads
+CREATE TABLE IF NOT EXISTS sources (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,                   -- torrent | ed2k | ddl | streaming
+    base_url TEXT,
+    enabled BOOLEAN DEFAULT TRUE
+);
+
+-- 7️⃣ Actual download attempts
+CREATE TABLE IF NOT EXISTS downloads (
+    id SERIAL PRIMARY KEY,
+    media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
+    source_id INT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
+    external_ref TEXT,                     -- magnet, ed2k, url
+    status TEXT,                           -- queued | downloading | stalled | done | failed
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Useful indexes
+CREATE INDEX IF NOT EXISTS idx_downloads_media ON downloads(media_item_id);
+CREATE INDEX IF NOT EXISTS idx_downloads_source ON downloads(source_id);
+CREATE INDEX IF NOT EXISTS idx_external_ids_media ON external_ids(media_item_id);
+
+-- Dashboard indexes
+CREATE INDEX IF NOT EXISTS idx_processing_state_status
+ON processing_state(status);
+
+CREATE INDEX IF NOT EXISTS idx_processing_state_media
+ON processing_state(media_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_downloads_status_updated
+ON downloads(status, updated_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_downloads_media_item
+ON downloads(media_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_media_items_created_at
+ON media_items(created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_media_items_media_type
+ON media_items(media_type);
+
+CREATE INDEX IF NOT EXISTS idx_external_ids_lookup
+ON external_ids(source, external_id);
+
+CREATE INDEX IF NOT EXISTS idx_processing_state_status_media
+ON processing_state(status, media_item_id);
+
+CREATE INDEX IF NOT EXISTS idx_media_items_title_year_notnull
+ON media_items(title, year)
+WHERE year IS NOT NULL;
+
+-- Services
+CREATE TABLE IF NOT EXISTS services (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,        -- radarr, sonarr, plex, animeworld, emule
+    description TEXT,
+    enabled BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE service_settings (
+    id SERIAL PRIMARY KEY,
+    service_id INTEGER NOT NULL REFERENCES services(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,             -- es: base_url, api_key
+    label TEXT NOT NULL,           -- testo leggibile in GUI
+    value TEXT,
+    value_type TEXT NOT NULL DEFAULT 'string', -- string, int, bool, password
+    required BOOLEAN DEFAULT FALSE,
+    UNIQUE(service_id, key)
+);
+
+-- 1️⃣ Radarr
+INSERT INTO services (name, description, enabled)
+VALUES 
+('Radarr', 'Gestione film e import Radarr', TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- 2️⃣ Sonarr
+INSERT INTO services (name, description, enabled)
+VALUES 
+('Sonarr', 'Gestione serie TV e import Sonarr', TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- 3️⃣ Plex Web
+INSERT INTO services (name, description, enabled)
+VALUES 
+('Plex Web', 'Import media da Plex database', TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- 4️⃣ Anime World
+INSERT INTO services (name, description, enabled)
+VALUES 
+('Anime World', 'Import media da Anime World', TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- 5️⃣ Emule
+INSERT INTO services (name, description, enabled)
+VALUES 
+('Emule', 'Monitoraggio download Emule', TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- ===============================================
+-- INSERT IMPOSTAZIONI PER OGNI SERVIZIO
+-- ===============================================
+
+-- Radarr
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'radarr_url', 'Radarr URL', 'http://192.168.1.20:7878', 'string', TRUE FROM services WHERE name='Radarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'radarr_api_key', 'Radarr API Key', 'CHANGE_ME', 'string', TRUE FROM services WHERE name='Radarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+-- Sonarr
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'sonarr_url', 'Sonarr URL', 'http://192.168.1.20:8989', 'string', TRUE FROM services WHERE name='Sonarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'sonarr_api_key', 'Sonarr API Key', 'CHANGE_ME', 'string', TRUE FROM services WHERE name='Sonarr'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+-- Plex Web
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'plex_db_path', 'Percorso Plex DB', '', 'string', TRUE FROM services WHERE name='Plex Web'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'plex_web_url', 'URL Plex Web', '', 'string', FALSE FROM services WHERE name='Plex Web'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+-- Anime World
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'animeworld_url', 'Anime World URL', '', 'string', TRUE FROM services WHERE name='Anime World'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+-- Emule
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'emule_incoming_dir', 'Cartella Emule Incoming', '', 'string', TRUE FROM services WHERE name='Emule'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'emule_enabled', 'Abilita Emule', 'true', 'boolean', TRUE FROM services WHERE name='Emule'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+
+CREATE INDEX IF NOT EXISTS idx_service_settings_service
+ON service_settings(service_id);

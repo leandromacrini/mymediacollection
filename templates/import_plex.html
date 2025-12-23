@@ -1,0 +1,36 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h2>Plex Import</h2>
+<form method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".db" required>
+    <button type="submit" class="btn btn-primary">Importa</button>
+</form>
+
+{% if report %}
+    <hr>
+    <h4>Report Import</h4>
+    <p><strong>Media importati:</strong> {{ report.imported|length }}</p>
+    <ul>
+        {% for pm in report.imported %}
+            <li>{{ pm.title }}</li>
+        {% endfor %}
+    </ul>
+
+    <p><strong>Media saltati (già presenti):</strong> {{ report.skipped|length }}</p>
+    <ul>
+        {% for pm in report.skipped %}
+            <li>{{ pm.title }} -> {{ pm.file_path }}</li>
+        {% endfor %}
+    </ul>
+
+    {% if report.errors %}
+        <p><strong>Errori:</strong></p>
+        <ul class="text-danger">
+            {% for err in report.errors %}
+                <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+{% endif %}
+{% endblock %}

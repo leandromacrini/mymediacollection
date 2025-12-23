@@ -1,0 +1,28 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Pending Media</h2>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Year</th>
+            <th>Category</th>
+            <th>Source</th>
+            <th>TMDb ID</th>
+            <th>IMDB ID</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in items %}
+        <tr>
+            <td>{{ item.title }}</td>
+            <td>{{ item.year }}</td>
+            <td>{{ item.category }}</td>
+            <td>{{ item.source }}</td>
+            <td>{{ item.tmdb_id }}</td>
+            <td>{{ item.imdb_id }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

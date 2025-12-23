@@ -1,0 +1,454 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<style>
+    .wanted-table th,
+    .wanted-table td {
+        padding: 0.85rem 1rem;
+        vertical-align: middle;
+    }
+    .wanted-actions .btn {
+        border-width: 1px;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+    }
+    .btn-imdb {
+        border-color: #f5c518;
+        color: #5c4700;
+    }
+    .btn-imdb:hover {
+        background: #f5c518;
+        color: #111;
+    }
+    .btn-tmdb {
+        border-color: #01b4e4;
+        color: #0a5d77;
+    }
+    .btn-tmdb:hover {
+        background: #01b4e4;
+        color: #06202a;
+    }
+    .btn-anilist {
+        border-color: #02a9ff;
+        color: #0b4f7a;
+    }
+    .btn-anilist:hover {
+        background: #02a9ff;
+        color: #06283d;
+    }
+    .badge-imdb {
+        background: #f5c518;
+        color: #111;
+    }
+    .badge-tmdb {
+        background: #01b4e4;
+        color: #06202a;
+    }
+    .badge-anilist {
+        background: #02a9ff;
+        color: #06283d;
+    }
+</style>
+
+<div class="d-flex align-items-center gap-2 mb-3">
+    <i class="bi bi-bookmark-star fs-3 text-warning"></i>
+    <div>
+        <h2 class="mb-0">Wanted Media</h2>
+        <small class="text-muted">Contenuti desiderati da identificare e completare.</small>
+    </div>
+</div>
+
+<p class="text-muted mb-3">
+    Contenuti desiderati. Da qui puoi identificare correttamente i media tramite database esterni.
+</p>
+
+<form id="bulk-delete-form" method="post" action="{{ url_for('wanted_bulk_delete') }}"></form>
+
+<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <div class="input-group input-group-sm" style="max-width: 320px;">
+        <span class="input-group-text"><i class="bi bi-search"></i></span>
+        <input id="wanted-title-search" type="text" class="form-control" placeholder="Cerca per titolo...">
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="select-visible-btn">
+        Seleziona visibili
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-selection-btn">
+        Deseleziona
+    </button>
+    <button type="button" class="btn btn-sm btn-danger" id="bulk-delete-btn" data-bs-toggle="modal" data-bs-target="#bulkDeleteModal" disabled>
+        Elimina selezionati
+    </button>
+</div>
+
+<div class="card border-0 shadow-sm">
+    <div class="card-body p-0">
+        <table id="wanted_table" class="table table-hover align-middle mb-0 wanted-table">
+            <thead class="table-light">
+                <tr>
+                    <th class="text-center" style="width: 40px;"></th>
+                    <th>Media</th>
+                    <th>Info</th>
+                    <th>Identificazione</th>
+                    <th>Azioni</th>
+                </tr>
+            </thead>
+
+            <tbody>
+            {% for item in items %}
+                <tr>
+
+                    <td class="text-center">
+                        <input class="form-check-input wanted-select"
+                               type="checkbox"
+                               name="media_ids"
+                               value="{{ item.id }}"
+                               form="bulk-delete-form">
+                    </td>
+
+                    <!-- MEDIA -->
+                    <td>
+                        <strong>{{ item.title }}</strong><br>
+                        <small class="text-muted">{{ item.year }}</small>
+                    </td>
+
+                    <!-- INFO -->
+                    <td>
+                        <div class="d-flex flex-wrap gap-1">
+                            <span class="badge bg-secondary">{{ item.media_type }}</span>
+                            {% if item.category %}
+                                <span class="badge bg-info text-dark">{{ item.category }}</span>
+                            {% endif %}
+                        </div>
+                    </td>
+
+            <!-- IDENTIFICATION STATUS -->
+            <td>
+                <div class="d-flex flex-wrap gap-1">
+                    {% if item.external_ids.get('imdb') %}
+                        <span class="badge badge-imdb">IMDB</span>
+                    {% endif %}
+                    
+                    {% if item.external_ids.get('tmdb') %}
+                        <span class="badge badge-tmdb">TMDB</span>
+                    {% endif %}
+
+                    {% if item.external_ids.get('anilist') %}
+                        <span class="badge badge-anilist">AniList</span>
+                    {% endif %}
+                </div>
+            </td>
+
+                    <!-- ACTIONS -->
+                    <td>
+                        <div class="d-flex flex-wrap gap-2 wanted-actions">
+
+                            <!-- IMDB -->
+                            <button class="btn btn-sm btn-imdb d-inline-flex align-items-center gap-1"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#imdbModal{{ item.id }}">
+                                <i class="bi bi-search"></i>
+                                IMDB
+                            </button>
+
+                            <!-- TMDB -->
+                            <button class="btn btn-sm btn-tmdb d-inline-flex align-items-center gap-1"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#tmdbModal{{ item.id }}">
+                                <i class="bi bi-film"></i>
+                                TMDB
+                            </button>
+
+                            <!-- ANILIST -->
+                            <button class="btn btn-sm btn-anilist d-inline-flex align-items-center gap-1"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#anilistModal{{ item.id }}">
+                                <i class="bi bi-collection-play"></i>
+                                AniList
+                            </button>
+
+                            {% if item.external_ids.get('anilist_link') %}
+                                <a class="btn btn-sm btn-anilist d-inline-flex align-items-center gap-1"
+                                   href="{{ item.external_ids.get('anilist_link') }}"
+                                   target="_blank"
+                                   rel="noopener">
+                                    <i class="bi bi-box-arrow-up-right"></i>
+                                    AniList Link
+                                </a>
+                            {% endif %}
+
+                            <button class="btn btn-sm btn-outline-danger d-inline-flex align-items-center gap-1"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#deleteWantedModal{{ item.id }}">
+                                <i class="bi bi-trash"></i>
+                                Elimina
+                            </button>
+
+                        </div>
+                    </td>
+
+                </tr>
+
+                <!-- ================= IMDB MODAL ================= -->
+                <div class="modal fade"
+                     id="imdbModal{{ item.id }}"
+                     tabindex="-1"
+                     aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                        <div class="modal-content">
+
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    Identifica su IMDB - {{ item.title }}
+                                </h5>
+                                <button type="button" class="btn-close"
+                                        data-bs-dismiss="modal"></button>
+                            </div>
+
+                            <div class="modal-body">
+                                <div class="alert alert-info">
+                                    Ricerca IMDB in corso...
+                                </div>
+
+                                <!-- RESULTS PLACEHOLDER -->
+                                <ul class="list-group imdb-results"
+                                    data-media-id="{{ item.id }}">
+                                    <!-- risultati caricati via JS -->
+                                </ul>
+                            </div>
+
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary"
+                                        data-bs-dismiss="modal">
+                                    Chiudi
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ================= TMDB MODAL ================= -->
+                <div class="modal fade"
+                     id="tmdbModal{{ item.id }}"
+                     tabindex="-1"
+                     aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                        <div class="modal-content">
+
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    Identifica su TMDB - {{ item.title }}
+                                </h5>
+                                <button type="button" class="btn-close"
+                                        data-bs-dismiss="modal"></button>
+                            </div>
+
+                            <div class="modal-body">
+                                <div class="alert alert-info">
+                                    Ricerca TMDB in corso...
+                                </div>
+
+                                <ul class="list-group tmdb-results"
+                                    data-media-id="{{ item.id }}">
+                                </ul>
+                            </div>
+
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary"
+                                        data-bs-dismiss="modal">
+                                    Chiudi
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ================= ANILIST MODAL ================= -->
+                <div class="modal fade"
+                     id="anilistModal{{ item.id }}"
+                     tabindex="-1"
+                     aria-hidden="true">
+                    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+                        <div class="modal-content">
+
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    Identifica su AniList - {{ item.title }}
+                                </h5>
+                                <button type="button" class="btn-close"
+                                        data-bs-dismiss="modal"></button>
+                            </div>
+
+                            <div class="modal-body">
+                                <div class="alert alert-info">
+                                    Ricerca AniList in corso...
+                                </div>
+
+                                <ul class="list-group anilist-results"
+                                    data-media-id="{{ item.id }}">
+                                </ul>
+                            </div>
+
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary"
+                                        data-bs-dismiss="modal">
+                                    Chiudi
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ================= DELETE MODAL ================= -->
+                <div class="modal fade"
+                     id="deleteWantedModal{{ item.id }}"
+                     tabindex="-1"
+                     aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+
+                            <div class="modal-header border-0">
+                                <h5 class="modal-title">
+                                    Rimuovi dai Wanted
+                                </h5>
+                                <button type="button" class="btn-close"
+                                        data-bs-dismiss="modal"></button>
+                            </div>
+
+                            <div class="modal-body">
+                                <div class="d-flex align-items-center gap-3">
+                                    <div class="rounded-circle bg-danger-subtle text-danger d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
+                                        <i class="bi bi-trash fs-5"></i>
+                                    </div>
+                                    <div>
+                                        <div class="fw-semibold">{{ item.title }}</div>
+                                        <div class="text-muted small">
+                                            {{ item.year }} - {{ item.media_type }}
+                                            {% if item.category %} - {{ item.category }}{% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <p class="mt-3 mb-0 text-muted">
+                                    Questa azione elimina il media dai wanted e dai dati associati.
+                                </p>
+                            </div>
+
+                            <div class="modal-footer border-0">
+                                <button class="btn btn-light"
+                                        data-bs-dismiss="modal">
+                                    Annulla
+                                </button>
+                                <form method="post"
+                                      action="{{ url_for('wanted_delete', media_item_id=item.id) }}">
+                                    <button type="submit" class="btn btn-danger d-inline-flex align-items-center gap-1">
+                                        <i class="bi bi-trash"></i>
+                                        Elimina
+                                    </button>
+                                </form>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+            {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- ================= BULK DELETE MODAL ================= -->
+        <div class="modal fade"
+             id="bulkDeleteModal"
+             tabindex="-1"
+             aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title">
+                            Rimuovi elementi selezionati
+                        </h5>
+                        <button type="button" class="btn-close"
+                                data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <p class="mb-1">
+                            Stai per eliminare <strong id="bulk-delete-count">0</strong> elementi.
+                        </p>
+                        <p class="text-muted mb-0">
+                            Questa azione rimuove i media dai wanted e dai dati associati.
+                        </p>
+                    </div>
+
+                    <div class="modal-footer border-0">
+                        <button class="btn btn-light"
+                                data-bs-dismiss="modal">
+                            Annulla
+                        </button>
+                        <button type="submit"
+                                class="btn btn-danger d-inline-flex align-items-center gap-1"
+                                form="bulk-delete-form"
+                                id="bulk-delete-confirm">
+                            <i class="bi bi-trash"></i>
+                            Elimina
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    var table = $('#wanted_table').DataTable({
+        paging: true,
+        ordering: true,
+        searching: false,
+        order: [[1, "asc"]],
+        pageLength: 25,
+        lengthMenu: [10, 25, 50, 100],
+        columnDefs: [
+            { orderable: false, targets: [0, 4] }
+        ],
+        dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
+    });
+
+    function updateBulkState() {
+        var count = $('.wanted-select:checked').length;
+        $('#bulk-delete-btn').prop('disabled', count === 0);
+        $('#bulk-delete-confirm').prop('disabled', count === 0);
+        $('#bulk-delete-count').text(count);
+    }
+
+    $('#wanted-title-search').on('input', function() {
+        table.column(1).search(this.value).draw();
+        updateBulkState();
+    });
+
+    $(document).on('change', '.wanted-select', updateBulkState);
+
+    $('#select-visible-btn').on('click', function() {
+        var nodes = table.rows({ page: 'current', search: 'applied' }).nodes();
+        $(nodes).find('.wanted-select').prop('checked', true);
+        updateBulkState();
+    });
+
+    $('#clear-selection-btn').on('click', function() {
+        $('.wanted-select').prop('checked', false);
+        updateBulkState();
+    });
+
+    $('#bulkDeleteModal').on('show.bs.modal', updateBulkState);
+});
+</script>
+
+{% endblock %}

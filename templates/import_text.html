@@ -1,0 +1,35 @@
+{% extends "layout.html" %}
+{% block content %}
+<h2>Text Import</h2>
+<form method="post" enctype="multipart/form-data">
+    <input type="file" name="file" accept=".txt" required>
+    <button type="submit" class="btn btn-primary">Importa</button>
+</form>
+
+{% if report %}
+    <hr>
+    <h4>Report Import</h4>
+    <p><strong>Media importati:</strong> {{ report.imported|length }}</p>
+    <ul>
+        {% for title in report.imported %}
+            <li>{{ title }}</li>
+        {% endfor %}
+    </ul>
+
+    <p><strong>Media saltati (già presenti):</strong> {{ report.skipped|length }}</p>
+    <ul>
+        {% for title in report.skipped %}
+            <li>{{ title }}</li>
+        {% endfor %}
+    </ul>
+
+    {% if report.errors %}
+        <p><strong>Errori:</strong></p>
+        <ul class="text-danger">
+            {% for err in report.errors %}
+                <li>{{ err }}</li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+{% endif %}
+{% endblock %}

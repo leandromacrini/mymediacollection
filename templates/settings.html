@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <div>
+    <h2 class="mb-0">Impostazioni Servizi</h2>
+    <small class="text-muted">Gestisci URL, chiavi e opzioni di integrazione.</small>
+  </div>
+</div>
+
+{% for service in services %}
+  <div class="card mb-3 border-0 shadow-sm">
+    <div class="card-header bg-white">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div>
+          <div class="fw-semibold">{{ service.name }}</div>
+          <small class="text-muted">{{ service.description }}</small>
+        </div>
+        <span class="badge {% if service.enabled %}bg-success-subtle text-success{% else %}bg-secondary-subtle text-secondary{% endif %}">
+          {{ "Attivo" if service.enabled else "Disattivo" }}
+        </span>
+      </div>
+    </div>
+    <div class="card-body">
+      <form method="post" class="row g-3">
+        <input type="hidden" name="service_id" value="{{ service.id }}">
+        {% for setting in service.settings %}
+          {% set key_lower = setting.key|lower %}
+          {% set wide = 'url' in key_lower or 'path' in key_lower %}
+          <div class="{{ 'col-12' if wide else 'col-12 col-md-6' }}">
+            <label class="form-label d-flex align-items-center justify-content-between">
+              <span>{{ setting.label }}</span>
+              <small class="text-muted">{{ setting.key }}</small>
+            </label>
+            {% if setting.value_type == 'boolean' %}
+              <select class="form-select" name="setting_{{ setting.key }}">
+                <option value="true" {% if setting.value=='true' %}selected{% endif %}>True</option>
+                <option value="false" {% if setting.value=='false' %}selected{% endif %}>False</option>
+              </select>
+            {% elif setting.value_type == 'password' %}
+              <input type="password" class="form-control" name="setting_{{ setting.key }}" value="{{ setting.value }}">
+            {% elif setting.value_type in ['int', 'integer'] %}
+              <input type="number" class="form-control" name="setting_{{ setting.key }}" value="{{ setting.value }}">
+            {% else %}
+              <input type="text" class="form-control" name="setting_{{ setting.key }}" value="{{ setting.value }}">
+            {% endif %}
+          </div>
+        {% endfor %}
+        <div class="col-12 d-flex flex-wrap gap-2">
+          <button type="submit" name="action" value="save" class="btn btn-primary">Save</button>
+          <button type="submit" name="action" value="test" class="btn btn-secondary">Test</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endfor %}
+{% endblock %}

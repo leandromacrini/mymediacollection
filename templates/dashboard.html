@@ -1,0 +1,138 @@
+{% extends "layout.html" %}
+{% block content %}
+
+<h2 class="mb-4">Dashboard</h2>
+
+<!-- KPI CARDS -->
+<div class="row text-center mb-4">
+    <div class="col-md-4">
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h6>Total Media</h6>
+                <h3>{{ counts.total }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-2">
+        <div class="card shadow-sm">
+            <div class="card-body text-success">
+                <h6>Present</h6>
+                <h3>{{ counts.present }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-2">
+        <div class="card shadow-sm">
+            <div class="card-body text-warning">
+                <h6>Missing</h6>
+                <h3>{{ counts.missing }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-2">
+        <div class="card shadow-sm">
+            <div class="card-body text-primary">
+                <h6>Downloading</h6>
+                <h3>{{ counts.downloading }}</h3>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-2">
+        <div class="card shadow-sm">
+            <div class="card-body text-danger">
+                <h6>Errors</h6>
+                <h3>{{ counts.errors }}</h3>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- DOWNLOADS + LAST IMPORTS -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <h5>Active downloads</h5>
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Status</th>
+                    <th>Source</th>
+                    <th>Updated</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for d in downloads %}
+                <tr>
+                    <td>{{ d.title }} {% if d.year %}({{ d.year }}){% endif %}</td>
+                    <td>{{ d.status }}</td>
+                    <td>{{ d.source_name }}</td>
+                    <td>{{ d.updated_at }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="text-muted">No active downloads</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="col-md-6">
+        <h5>Last imports</h5>
+        <table class="table table-sm table-striped">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Source</th>
+                    <th>Imported</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for i in last_imports %}
+                <tr>
+                    <td>{{ i.title }}</td>
+                    <td>{{ i.source }}</td>
+                    <td>{{ i.created_at }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="3" class="text-muted">No imports yet</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- WANTED -->
+<div class="row">
+    <div class="col-md-6">
+        <h5>Wanted Movies</h5>
+        <ul class="list-group">
+            {% for m in wanted_movies %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{{ m.title }} {% if m.year %}({{ m.year }}){% endif %}</span>
+                <span class="badge bg-warning text-dark">Missing</span>
+            </li>
+            {% else %}
+            <li class="list-group-item text-muted">No missing movies</li>
+            {% endfor %}
+        </ul>
+    </div>
+
+    <div class="col-md-6">
+        <h5>Wanted Series</h5>
+        <ul class="list-group">
+            {% for s in wanted_series %}
+            <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{{ s.title }} {% if s.year %}({{ s.year }}){% endif %}</span>
+                <span class="badge bg-warning text-dark">Missing</span>
+            </li>
+            {% else %}
+            <li class="list-group-item text-muted">No missing series</li>
+            {% endfor %}
+        </ul>
+    </div>
+</div>
+
+{% endblock %}

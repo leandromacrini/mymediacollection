@@ -1,0 +1,51 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<h2>Radarr Movies</h2>
+<p>Total Movies: {{ movies|length }}</p>
+
+<table id="radarr_table" class="table table-striped table-bordered">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Year</th>
+            <th>TMDb ID</th>
+            <th>IMDb ID</th>
+            <th>Monitored</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for m in movies %}
+        <tr>
+            <td>
+                <a href="{{ radarr_url }}/movie/{{ m.tmdb_id }}" target="_blank">
+                    {{ m.title }}
+                </a>
+            </td>
+            <td>{{ m.year }}</td>
+            <td>{{ m.tmdb_id }}</td>
+            <td>{{ m.imdb_id }}</td>
+            <td>{{ "Yes" if m.monitored else "No" }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- DataTables JS/CSS -->
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    $('#radarr_table').DataTable({
+        "paging": true,
+        "ordering": true,
+        "order": [[1, "desc"]],  // default: order by Year descending
+        "pageLength": 25
+    });
+});
+</script>
+
+{% endblock %}
