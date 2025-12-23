@@ -22,6 +22,22 @@ def get_lookup_title(item: Media) -> str:
 def json_items(items):
     return jsonify({"items": items})
 
+def get_uploaded_file():
+    if "file" not in request.files:
+        flash("No file part")
+        return None, redirect(request.url)
+    file = request.files["file"]
+    if file.filename == "":
+        flash("No selected file")
+        return None, redirect(request.url)
+    return file, None
+
+def save_uploaded_file(file):
+    filename = secure_filename(file.filename)
+    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    file.save(filepath)
+    return filepath
+
 app = Flask(__name__)
 app.secret_key = "my_media_collection_secret_key"
 
@@ -46,6 +62,21 @@ def get_sonarr_status(title, year):
 def get_emule_status(title):
     # Placeholder function, sostituire con logica reale per Emule
     return "Not Available"
+
+def build_animeworld_media(form) -> Media:
+    original_title = form.get("original_title")
+    language = form.get("language")
+    return Media(
+        id=None,
+        title=form["title"],
+        year=int(form["year"]),
+        media_type="series" if int(form["episodes"]) > 1 else "movie",
+        category="anime",
+        source="animeworld",
+        source_ref=form["anime_link"],
+        original_title=original_title if original_title else None,
+        language=language if language else None
+    )
 
 # --- Routes ---
 @app.route("/")
@@ -240,19 +271,12 @@ def import_plex():
     report = {"imported": [], "skipped": [], "errors": []}
 
     if request.method == "POST":
-        if "file" not in request.files:
-            flash("No file part")
-            return redirect(request.url)
-
-        file = request.files["file"]
-        if file.filename == "":
-            flash("No selected file")
-            return redirect(request.url)
+        file, error_response = get_uploaded_file()
+        if error_response:
+            return error_response
 
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filepath)
+            filepath = save_uploaded_file(file)
 
             # Process Plex DB
             plex_items = plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE)
@@ -288,19 +312,12 @@ def import_text():
     report = {"imported": [], "skipped": [], "errors": []}
 
     if request.method == "POST":
-        if "file" not in request.files:
-            flash("No file part")
-            return redirect(request.url)
-
-        file = request.files["file"]
-        if file.filename == "":
-            flash("No selected file")
-            return redirect(request.url)
+        file, error_response = get_uploaded_file()
+        if error_response:
+            return error_response
 
         if file and file.filename.lower().endswith(".txt"):
-            filename = secure_filename(file.filename)
-            filepath = os.path.join(UPLOAD_FOLDER, filename)
-            file.save(filepath)
+            filepath = save_uploaded_file(file)
 
             # Leggi il file di testo
             with open(filepath, "r", encoding="utf-8") as f:
@@ -365,23 +382,11 @@ def add_wanted_anime_route():
     anime_link = request.form["anime_link"]
     search_query = request.form.get("search_query")
     anilist_id = request.form.get("anilist_id")
-    original_title = request.form.get("original_title")
-    language = request.form.get("language")
 
     if not anime_link.startswith("https://www.animeworld"):
         abort(400)
 
-    media = Media(
-        id=None,
-        title=request.form["title"],
-        year=int(request.form["year"]),
-        media_type="series" if int(request.form["episodes"]) > 1 else "movie",
-        category="anime",
-        source="animeworld",
-        source_ref=anime_link,
-        original_title=original_title if original_title else None,
-        language=language if language else None
-    )
+    media = build_animeworld_media(request.form)
 
     media_item_id, inserted = db.add_media(media)
     db.add_external_id(media_item_id, "animeworld", str(anime_id))
