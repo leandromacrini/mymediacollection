@@ -2,10 +2,350 @@
 
 {% block content %}
 <h2>Plex Import</h2>
-<form method="post" enctype="multipart/form-data">
+
+{% if not preview %}
+<form method="post" enctype="multipart/form-data" class="mb-4" id="plex-preview-form">
+    <input type="hidden" name="action" value="preview">
     <input type="file" name="file" accept=".db" required>
-    <button type="submit" class="btn btn-primary">Importa</button>
+    <button type="submit" class="btn btn-primary">Analizza DB</button>
 </form>
+{% endif %}
+
+{% if preview %}
+<form method="post">
+    <input type="hidden" name="action" value="import">
+    <input type="hidden" name="filepath" value="{{ preview.filepath }}">
+
+    <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+        <span class="badge bg-primary">Film: {{ preview.movies|length }}</span>
+        <span class="badge bg-secondary">Serie: {{ preview.series|length }}</span>
+        <span class="badge bg-info text-dark">Selezionati: <span id="selected-total">0</span></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-btn">Seleziona tutti</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-all-btn">Deseleziona</button>
+        <button type="submit" class="btn btn-success" id="import-btn">Importa selezionati</button>
+    </div>
+
+    <div class="row g-2 mb-4">
+        <div class="col-12 col-md-6">
+            <input type="text" class="form-control" id="plex-search" placeholder="Filtra per titolo...">
+        </div>
+        <div class="col-12 col-md-6 d-flex align-items-center gap-3">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="plex-only-selected">
+                <label class="form-check-label" for="plex-only-selected">Mostra solo selezionati</label>
+            </div>
+            <div class="btn-group" role="group" aria-label="Selezione tipo">
+                <button type="button" class="btn btn-sm btn-primary type-toggle" data-type="movie">Film</button>
+                <button type="button" class="btn btn-sm btn-secondary type-toggle" data-type="series">Serie</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="mb-4">
+        <h5>Film <small class="text-muted">(<span id="selected-movies">0</span> selezionati)</small></h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle plex-table">
+                <thead>
+                    <tr>
+                        <th style="width: 36px;"></th>
+                        <th class="sortable" data-sort-key="title">Titolo</th>
+                        <th class="sortable" data-sort-key="year">Anno</th>
+                        <th class="sortable" data-sort-key="tmdb">TMDB</th>
+                        <th class="sortable" data-sort-key="type">Tipo</th>
+                        <th class="sortable" data-sort-key="path">Percorso</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pm in preview.movies %}
+                    <tr class="plex-row" data-title="{{ pm.title|lower }}" data-type="movie" data-year="{{ pm.year or 0 }}" data-path="{{ pm.file_path|lower }}" data-tmdb="{{ pm.tmdb_title|lower if pm.tmdb_title else '' }}">
+                        <td>
+                            <input class="form-check-input plex-select plex-movie" type="checkbox" name="plex_guid" value="{{ pm.guid }}" checked>
+                            <input type="hidden" name="tmdb_match" value="{{ pm.guid }}|{{ pm.tmdb_id or '' }}|{{ '1' if pm.tmdb_confident else '0' }}">
+                        </td>
+                        <td>{{ pm.title }}</td>
+                        <td>{{ pm.year }}</td>
+                        <td>
+                            {% if pm.tmdb_id %}
+                                <span class="badge {{ 'bg-success' if pm.tmdb_confident else 'bg-warning text-dark' }}">
+                                    {{ pm.tmdb_title }}{% if pm.tmdb_year %} ({{ pm.tmdb_year }}){% endif %}
+                                </span>
+                                {% if pm.tmdb_score %}
+                                    <div class="text-muted small">Score {{ pm.tmdb_score }}</div>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">Nessun match</span>
+                            {% endif %}
+                        </td>
+                        <td>Film</td>
+                        <td class="text-muted small">{{ pm.file_path }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="mb-4">
+        <h5>Serie <small class="text-muted">(<span id="selected-series">0</span> selezionate)</small></h5>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle plex-table">
+                <thead>
+                    <tr>
+                        <th style="width: 36px;"></th>
+                        <th class="sortable" data-sort-key="title">Titolo</th>
+                        <th class="sortable" data-sort-key="year">Anno</th>
+                        <th class="sortable" data-sort-key="type">Tipo</th>
+                        <th class="sortable" data-sort-key="path">Percorso</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for pm in preview.series %}
+                    <tr class="plex-row" data-title="{{ pm.title|lower }}" data-type="series" data-year="{{ pm.year or 0 }}" data-path="{{ pm.file_path|lower }}">
+                        <td>
+                            <input class="form-check-input plex-select plex-series" type="checkbox" name="plex_guid" value="{{ pm.guid }}" checked>
+                        </td>
+                        <td>{{ pm.title }}</td>
+                        <td>{{ pm.year }}</td>
+                        <td>Serie</td>
+                        <td class="text-muted small">{{ pm.file_path }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</form>
+
+<script>
+var lastChecked = null;
+
+function updateSelectionStats() {
+    var selected = document.querySelectorAll('.plex-select:checked');
+    var selectedMovies = document.querySelectorAll('.plex-movie:checked');
+    var selectedSeries = document.querySelectorAll('.plex-series:checked');
+    document.getElementById('selected-total').textContent = selected.length;
+    document.getElementById('selected-movies').textContent = selectedMovies.length;
+    document.getElementById('selected-series').textContent = selectedSeries.length;
+    document.getElementById('import-btn').disabled = selected.length === 0;
+    updateTypeToggleButtons();
+}
+
+function applyFilters() {
+    var query = (document.getElementById('plex-search').value || '').trim().toLowerCase();
+    var onlySelected = document.getElementById('plex-only-selected').checked;
+    document.querySelectorAll('.plex-row').forEach(function(row) {
+        var title = row.getAttribute('data-title') || '';
+        var checkbox = row.querySelector('.plex-select');
+        var matchesQuery = !query || title.indexOf(query) !== -1;
+        var matchesSelected = !onlySelected || (checkbox && checkbox.checked);
+        row.style.display = (matchesQuery && matchesSelected) ? '' : 'none';
+    });
+}
+
+function updateTypeToggleButtons() {
+    var movieBoxes = document.querySelectorAll('.plex-movie');
+    var seriesBoxes = document.querySelectorAll('.plex-series');
+    var allMoviesSelected = Array.from(movieBoxes).every(function(el) { return el.checked; });
+    var allSeriesSelected = Array.from(seriesBoxes).every(function(el) { return el.checked; });
+    document.querySelectorAll('.type-toggle').forEach(function(btn) {
+        var type = btn.getAttribute('data-type');
+        var isActive = type === 'movie' ? allMoviesSelected : allSeriesSelected;
+        btn.classList.toggle('btn-primary', type === 'movie' && isActive);
+        btn.classList.toggle('btn-outline-primary', type === 'movie' && !isActive);
+        btn.classList.toggle('btn-secondary', type === 'series' && isActive);
+        btn.classList.toggle('btn-outline-secondary', type === 'series' && !isActive);
+    });
+}
+
+function sortTable(table, key, asc) {
+    var tbody = table.querySelector('tbody');
+    var rows = Array.from(tbody.querySelectorAll('tr'));
+    rows.sort(function(a, b) {
+        var aVal = a.getAttribute('data-' + key) || '';
+        var bVal = b.getAttribute('data-' + key) || '';
+        if (key === 'year') {
+            aVal = parseInt(aVal || '0', 10);
+            bVal = parseInt(bVal || '0', 10);
+        } else {
+            aVal = aVal.toLowerCase();
+            bVal = bVal.toLowerCase();
+        }
+        if (aVal < bVal) return asc ? -1 : 1;
+        if (aVal > bVal) return asc ? 1 : -1;
+        return 0;
+    });
+    rows.forEach(function(row) { tbody.appendChild(row); });
+}
+
+document.getElementById('select-all-btn').addEventListener('click', function() {
+    document.querySelectorAll('.plex-select').forEach(function(el) { el.checked = true; });
+    updateSelectionStats();
+    applyFilters();
+});
+document.getElementById('clear-all-btn').addEventListener('click', function() {
+    document.querySelectorAll('.plex-select').forEach(function(el) { el.checked = false; });
+    updateSelectionStats();
+    applyFilters();
+});
+document.querySelectorAll('.plex-select').forEach(function(el) {
+    el.addEventListener('change', function(event) {
+        if (event.shiftKey && lastChecked) {
+            var checkboxes = Array.from(document.querySelectorAll('.plex-select'));
+            var start = checkboxes.indexOf(el);
+            var end = checkboxes.indexOf(lastChecked);
+            if (start > -1 && end > -1) {
+                var min = Math.min(start, end);
+                var max = Math.max(start, end);
+                for (var i = min; i <= max; i += 1) {
+                    checkboxes[i].checked = lastChecked.checked;
+                }
+            }
+        }
+        lastChecked = el;
+        updateSelectionStats();
+        applyFilters();
+    });
+});
+document.getElementById('plex-search').addEventListener('input', applyFilters);
+document.getElementById('plex-only-selected').addEventListener('change', applyFilters);
+document.querySelectorAll('.type-toggle').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var type = btn.getAttribute('data-type');
+        var boxes = document.querySelectorAll(type === 'movie' ? '.plex-movie' : '.plex-series');
+        var shouldSelect = btn.classList.contains(type === 'movie' ? 'btn-outline-primary' : 'btn-outline-secondary');
+        boxes.forEach(function(el) { el.checked = shouldSelect; });
+        updateSelectionStats();
+        applyFilters();
+    });
+});
+document.querySelectorAll('.plex-table .sortable').forEach(function(th) {
+    th.addEventListener('click', function() {
+        var key = th.getAttribute('data-sort-key');
+        var table = th.closest('table');
+        var asc = !th.classList.contains('sorted-asc');
+        table.querySelectorAll('.sortable').forEach(function(header) {
+            header.classList.remove('sorted-asc', 'sorted-desc');
+        });
+        th.classList.add(asc ? 'sorted-asc' : 'sorted-desc');
+        sortTable(table, key, asc);
+    });
+});
+updateSelectionStats();
+</script>
+{% endif %}
+
+<div id="plex-loading" class="plex-loading d-none">
+    <div class="plex-loading__backdrop"></div>
+    <div class="plex-loading__card">
+        <div class="spinner-border text-primary" role="status"></div>
+        <div class="mt-2" id="plex-loading-stage">Elaborazione DB Plex in corso…</div>
+        <div class="text-muted small" id="plex-loading-detail">Operazione in background, attendi qualche istante.</div>
+        <div class="progress mt-2" style="height: 6px;">
+            <div class="progress-bar" role="progressbar" id="plex-loading-bar" style="width: 0%;"></div>
+        </div>
+    </div>
+</div>
+
+<style>
+.plex-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.plex-loading__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+}
+.plex-loading__card {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px 22px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}
+</style>
+
+<script>
+function showPlexLoading() {
+    var el = document.getElementById('plex-loading');
+    if (el) {
+        el.classList.remove('d-none');
+    }
+}
+function updatePlexLoading(stage, processed, total) {
+    var stageEl = document.getElementById('plex-loading-stage');
+    var detailEl = document.getElementById('plex-loading-detail');
+    var barEl = document.getElementById('plex-loading-bar');
+    if (stageEl && stage) {
+        stageEl.textContent = stage;
+    }
+    if (detailEl) {
+        if (total && total > 0) {
+            detailEl.textContent = processed + ' / ' + total;
+        } else {
+            detailEl.textContent = 'Operazione in background, attendi qualche istante.';
+        }
+    }
+    if (barEl && total && total > 0) {
+        var pct = Math.min(100, Math.round((processed / total) * 100));
+        barEl.style.width = pct + '%';
+    }
+}
+document.querySelectorAll('form').forEach(function(form) {
+    form.addEventListener('submit', function() {
+        showPlexLoading();
+    });
+});
+
+var previewForm = document.getElementById('plex-preview-form');
+if (previewForm) {
+    previewForm.addEventListener('submit', function(event) {
+        event.preventDefault();
+        showPlexLoading();
+        var formData = new FormData(previewForm);
+        fetch(previewForm.getAttribute('action') || window.location.pathname, {
+            method: 'POST',
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+            body: formData
+        }).then(function(resp) { return resp.json(); })
+          .then(function(data) {
+              if (!data.ok || !data.job_id) {
+                  throw new Error('Errore avvio job');
+              }
+              var jobId = data.job_id;
+              var poll = setInterval(function() {
+                  fetch('/import/plex/status?job_id=' + jobId)
+                    .then(function(resp) { return resp.json(); })
+                    .then(function(status) {
+                        if (!status.ok) {
+                            throw new Error('Errore stato job');
+                        }
+                        updatePlexLoading(status.stage, status.processed, status.total);
+                        if (status.status === 'done') {
+                            clearInterval(poll);
+                            window.location.href = '/import/plex?job_id=' + jobId;
+                        } else if (status.status === 'error') {
+                            clearInterval(poll);
+                            updatePlexLoading('Errore', 0, 0);
+                        }
+                    }).catch(function() {
+                        clearInterval(poll);
+                        updatePlexLoading('Errore', 0, 0);
+                    });
+              }, 1000);
+          })
+          .catch(function() {
+              updatePlexLoading('Errore', 0, 0);
+          });
+    });
+}
+</script>
 
 {% if report %}
     <hr>
@@ -20,7 +360,11 @@
     <p><strong>Media saltati (già presenti):</strong> {{ report.skipped|length }}</p>
     <ul>
         {% for pm in report.skipped %}
-            <li>{{ pm.title }} -> {{ pm.file_path }}</li>
+            {% if pm is string %}
+                <li>{{ pm }}</li>
+            {% else %}
+                <li>{{ pm.title }}</li>
+            {% endif %}
         {% endfor %}
     </ul>
 

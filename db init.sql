@@ -51,8 +51,7 @@ CREATE TABLE IF NOT EXISTS external_ids (
     id SERIAL PRIMARY KEY,
     media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
     source TEXT NOT NULL,             -- radarr | sonarr | tmdb | imdb | anilist
-    external_id TEXT NOT NULL,
-    UNIQUE(source, external_id)
+    external_id TEXT NOT NULL
 );
 
 -- 4️⃣ Processing state of each media item

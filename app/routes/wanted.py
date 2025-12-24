@@ -247,10 +247,10 @@ def wanted_bulk_add_radarr():
 
 
 def _merge_required_external(item: Media) -> tuple[str, str] | tuple[None, None]:
-    if item.category == "anime":
-        return "anilist", item.external_ids.get("anilist")
     if item.media_type == "movie":
         return "tmdb", item.external_ids.get("tmdb")
+    if item.category == "anime":
+        return "tvdb", item.external_ids.get("tvdb")
     return "tvdb", item.external_ids.get("tvdb")
 
 

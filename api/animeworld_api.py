@@ -64,7 +64,8 @@ def get_animeworld_status_map(db: db_core.MediaDB) -> dict:
 
 
 def find(title: str):
-    return aw.find(title)
+    result = aw.find(title)
+    return result 
 
 def search_animeworld_for_wanted(title: str):
     results = aw.find(title)

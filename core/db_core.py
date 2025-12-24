@@ -154,7 +154,6 @@ class MediaDB:
             cur.execute("""
                 INSERT INTO external_ids (media_item_id, source, external_id)
                 VALUES (%s, %s, %s)
-                ON CONFLICT (source, external_id) DO NOTHING
             """, (media_item_id, source, external_id))
             return cur.rowcount > 0
 
@@ -490,7 +489,6 @@ class MediaDB:
                 SELECT %s, source, external_id
                 FROM external_ids
                 WHERE media_item_id = ANY(%s)
-                ON CONFLICT (source, external_id) DO NOTHING
                 """,
                 (keep_id, merge_ids)
             )
