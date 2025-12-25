@@ -54,9 +54,28 @@ def _radarr_find_best(title: str, year: int | None) -> dict | None:
     }
 
 
+def _wanted_key(title: str, year: int | None) -> tuple[str, int | None]:
+    return ((title or "").strip().lower(), year)
+
+
+def _get_wanted_keys() -> set[tuple[str, int | None]]:
+    wanted = db.get_wanted_items(limit=1000000)
+    return {_wanted_key(item.title, item.year) for item in wanted if item.title}
+
+
 def _build_preview(filepath: str) -> dict:
+    wanted_keys = _get_wanted_keys()
     movies = []
+    excluded = []
     for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE):
+        if _wanted_key(pm.title, pm.year) in wanted_keys:
+            excluded.append({
+                "title": pm.title,
+                "year": pm.year,
+                "media_type": "movie",
+                "reason": "Gia in wanted"
+            })
+            continue
         match = _radarr_find_best(pm.title, pm.year)
         movies.append({
             "guid": pm.guid,
@@ -69,16 +88,23 @@ def _build_preview(filepath: str) -> dict:
             "tmdb_score": match.get("tmdb_score") if match else None,
             "tmdb_confident": match.get("tmdb_confident") if match else False
         })
-    series = [
-        {
+    series = []
+    for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.SERIES_MEDIATYPE):
+        if _wanted_key(pm.title, pm.year) in wanted_keys:
+            excluded.append({
+                "title": pm.title,
+                "year": pm.year,
+                "media_type": "series",
+                "reason": "Gia in wanted"
+            })
+            continue
+        series.append({
             "guid": pm.guid,
             "title": pm.title,
             "year": pm.year,
             "file_path": pm.file_path
-        }
-        for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.SERIES_MEDIATYPE)
-    ]
-    return {"filepath": filepath, "movies": movies, "series": series}
+        })
+    return {"filepath": filepath, "movies": movies, "series": series, "excluded": excluded}
 
 
 def _start_preview_job(filepath: str) -> str:
@@ -100,13 +126,26 @@ def _start_preview_job(filepath: str) -> str:
                 _plex_jobs[job_id]["stage"] = "Lettura film Plex"
                 _plex_jobs[job_id]["updated_at"] = time.time()
             movies_raw = plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE)
+            wanted_keys = _get_wanted_keys()
             with _plex_jobs_lock:
                 _plex_jobs[job_id]["stage"] = "Match TMDB tramite Radarr"
                 _plex_jobs[job_id]["total"] = len(movies_raw)
                 _plex_jobs[job_id]["processed"] = 0
                 _plex_jobs[job_id]["updated_at"] = time.time()
             movies = []
+            excluded = []
             for pm in movies_raw:
+                if _wanted_key(pm.title, pm.year) in wanted_keys:
+                    excluded.append({
+                        "title": pm.title,
+                        "year": pm.year,
+                        "media_type": "movie",
+                        "reason": "Gia in wanted"
+                    })
+                    with _plex_jobs_lock:
+                        _plex_jobs[job_id]["processed"] += 1
+                        _plex_jobs[job_id]["updated_at"] = time.time()
+                    continue
                 match = _radarr_find_best(pm.title, pm.year)
                 movies.append({
                     "guid": pm.guid,
@@ -125,19 +164,26 @@ def _start_preview_job(filepath: str) -> str:
             with _plex_jobs_lock:
                 _plex_jobs[job_id]["stage"] = "Lettura serie Plex"
                 _plex_jobs[job_id]["updated_at"] = time.time()
-            series = [
-                {
+            series = []
+            for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.SERIES_MEDIATYPE):
+                if _wanted_key(pm.title, pm.year) in wanted_keys:
+                    excluded.append({
+                        "title": pm.title,
+                        "year": pm.year,
+                        "media_type": "series",
+                        "reason": "Gia in wanted"
+                    })
+                    continue
+                series.append({
                     "guid": pm.guid,
                     "title": pm.title,
                     "year": pm.year,
                     "file_path": pm.file_path
-                }
-                for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.SERIES_MEDIATYPE)
-            ]
+                })
             with _plex_jobs_lock:
                 _plex_jobs[job_id]["status"] = "done"
                 _plex_jobs[job_id]["stage"] = "Completato"
-                _plex_jobs[job_id]["result"] = {"filepath": filepath, "movies": movies, "series": series}
+                _plex_jobs[job_id]["result"] = {"filepath": filepath, "movies": movies, "series": series, "excluded": excluded}
                 _plex_jobs[job_id]["updated_at"] = time.time()
         except Exception as exc:
             with _plex_jobs_lock:

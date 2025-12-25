@@ -24,7 +24,8 @@ def wanted_view():
         radarr_url=radarr_url,
         radarr_defaults={
             "root_folder": radarr_cfg.get("radarr_root_folder"),
-            "profile_id": radarr_cfg.get("radarr_profile_id")
+            "profile_id": radarr_cfg.get("radarr_profile_id"),
+            "enable_search": radarr_cfg.get("radarr_enable_search")
         }
     )
 
@@ -67,8 +68,44 @@ def wanted_lookup_tmdb(media_item_id):
     if not item or item.media_type != "movie":
         return json_items([])
 
-    query = request.args.get("q") or item.title
-    results = radarr_api.radarr_lookup(query, item.year, db)
+    raw_query = request.args.get("q")
+    imdb_query = (raw_query or "").strip()
+    if imdb_query and imdb_query.lower().startswith("tt") and imdb_query[2:].isdigit():
+        imdb_match = radarr_api.radarr_get_by_imdb(imdb_query, db)
+        if imdb_match and imdb_match.tmdb_id:
+            return json_items([{
+                "title": imdb_match.title,
+                "year": imdb_match.year,
+                "external_id": imdb_match.tmdb_id,
+                "imdb_id": imdb_match.imdb_id
+            }])
+
+    def normalize_query(value: str | None) -> str | None:
+        if not value:
+            return None
+        cleaned = value.replace(":", " ").replace("-", " ")
+        cleaned = " ".join(cleaned.split()).strip()
+        return cleaned or None
+
+    candidates = []
+    for value in [raw_query, item.title, item.original_title]:
+        if value and value not in candidates:
+            candidates.append(value)
+        normalized = normalize_query(value)
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+
+    results = []
+    seen_tmdb = set()
+    for query in candidates:
+        lookup = radarr_api.radarr_lookup(query, item.year, db)
+        if not lookup and item.year:
+            lookup = radarr_api.radarr_lookup(query, None, db)
+        for r in lookup:
+            if r.tmdb_id and r.tmdb_id not in seen_tmdb:
+                results.append(r)
+                seen_tmdb.add(r.tmdb_id)
+
     items = [
         {
             "title": r.title,
@@ -157,6 +194,7 @@ def wanted_add_radarr(media_item_id):
     data = request.get_json(silent=True) or {}
     root_folder = data.get("root_folder")
     profile_id = data.get("profile_id")
+    enable_search = data.get("enable_search")
     if not root_folder or not profile_id:
         return jsonify({"ok": False, "error": "missing_options"}), 400
 
@@ -177,6 +215,7 @@ def wanted_add_radarr(media_item_id):
         radarr_item,
         profile_id=int(profile_id),
         root_folder=root_folder,
+        enable_search=bool(enable_search),
         db=db
     )
     if added:
@@ -191,6 +230,7 @@ def wanted_bulk_add_radarr():
     media_ids = data.get("media_ids") or []
     root_folder = data.get("root_folder")
     profile_id = data.get("profile_id")
+    enable_search = data.get("enable_search")
     if not media_ids or not root_folder or not profile_id:
         return jsonify({"ok": False, "error": "missing_parameters"}), 400
 
@@ -200,6 +240,9 @@ def wanted_bulk_add_radarr():
     added = 0
     skipped = 0
     errors = 0
+    added_ids = []
+    skipped_ids = []
+    error_ids = []
     for media_id in media_ids:
         try:
             media_id = int(media_id)
@@ -220,6 +263,7 @@ def wanted_bulk_add_radarr():
         if str(tmdb_id) in existing_tmdb:
             db.add_external_id(media_id, "radarr", str(tmdb_id))
             skipped += 1
+            skipped_ids.append(media_id)
             continue
 
         radarr_item = radarr_api.RadarrMedia(
@@ -234,16 +278,27 @@ def wanted_bulk_add_radarr():
             radarr_item,
             profile_id=int(profile_id),
             root_folder=root_folder,
+            enable_search=bool(enable_search),
             db=db
         )
         if ok:
             db.add_external_id(media_id, "radarr", str(tmdb_id))
             existing_tmdb.add(str(tmdb_id))
             added += 1
+            added_ids.append(media_id)
         else:
             errors += 1
+            error_ids.append(media_id)
 
-    return jsonify({"ok": True, "added": added, "skipped": skipped, "errors": errors})
+    return jsonify({
+        "ok": True,
+        "added": added,
+        "skipped": skipped,
+        "errors": errors,
+        "added_ids": added_ids,
+        "skipped_ids": skipped_ids,
+        "error_ids": error_ids
+    })
 
 
 def _merge_required_external(item: Media) -> tuple[str, str] | tuple[None, None]:

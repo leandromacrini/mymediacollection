@@ -2,106 +2,54 @@
 {% block content %}
 
 <style>
+    .wanted-table {
+        table-layout: fixed;
+        width: 100%;
+    }
     .wanted-table th,
     .wanted-table td {
-        padding: 1.1rem 1rem;
         vertical-align: middle;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
-    .wanted-table thead th {
-        background: #f8f9fb;
-        position: sticky;
-        top: 0;
-        z-index: 2;
-        box-shadow: inset 0 -1px 0 rgba(0,0,0,0.08);
-    }
-    .wanted-table tbody tr {
-        background: #fff;
-        border-bottom: 1px solid #e8edf2;
-    }
-    .wanted-table tbody tr:nth-child(odd) {
-        background: #fbfcfe;
-    }
-    .wanted-table tbody tr:hover {
-        background: #f1f5f9;
-    }
-    .wanted-title {
-        font-size: 1.02rem;
-        font-weight: 700;
-        color: #1f2a37;
-    }
-    .wanted-meta {
-        font-size: 0.88rem;
-        color: #6c757d;
-    }
-    .wanted-year {
-        font-weight: 600;
-        color: #425466;
-    }
-    .wanted-actions .btn {
-        border-width: 1px;
-        font-weight: 600;
-        letter-spacing: 0.2px;
-    }
-    .btn-imdb {
-        border-color: #f5c518;
-        color: #5c4700;
-    }
-    .btn-imdb:hover {
-        background: #f5c518;
-        color: #111;
-    }
-    .btn-tmdb {
-        border-color: #01b4e4;
-        color: #0a5d77;
-    }
-    .btn-tmdb:hover {
-        background: #01b4e4;
-        color: #06202a;
-    }
-    .btn-anilist {
-        border-color: #02a9ff;
-        color: #0b4f7a;
-    }
-    .btn-anilist:hover {
-        background: #02a9ff;
-        color: #06283d;
-    }
-    .btn-radarr {
-        border-color: #f6a000;
-        color: #7a4a00;
-    }
-    .btn-radarr:hover {
-        background: #f6a000;
-        color: #2b1a00;
-    }
-    .badge-imdb {
-        background: #f5c518;
-        color: #111;
-    }
-    .badge-tmdb {
-        background: #01b4e4;
-        color: #06202a;
-    }
-    .badge-anilist {
-        background: #02a9ff;
-        color: #06283d;
-    }
-    .badge-radarr {
-        background: #f6a000;
-        color: #2b1a00;
-    }
+    .wanted-table th:nth-child(1),
+    .wanted-table td:nth-child(1) { width: 4%; }
+    .wanted-table th:nth-child(2),
+    .wanted-table td:nth-child(2) { width: 30%; }
+    .wanted-table th:nth-child(3),
+    .wanted-table td:nth-child(3) { width: 8%; }
+    .wanted-table th:nth-child(4),
+    .wanted-table td:nth-child(4) { width: 16%; }
+    .wanted-table th:nth-child(5),
+    .wanted-table td:nth-child(5) { width: 18%; }
+    .wanted-table th:nth-child(6),
+    .wanted-table td:nth-child(6) { width: 18%; }
+    .wanted-table th:nth-child(7),
+    .wanted-table td:nth-child(7) { width: 6%; }
+    .badge-imdb { background: #f5c518; color: #111; }
+    .badge-tmdb { background: #01b4e4; color: #06202a; }
+    .badge-anilist { background: #02a9ff; color: #06283d; }
+    .badge-radarr { background: #f6a000; color: #2b1a00; }
 </style>
 
-<div class="d-flex align-items-center gap-2 mb-3">
-    <i class="bi bi-bookmark-star fs-3 text-warning"></i>
-    <div>
-        <h2 class="mb-0">Wanted Media</h2>
-        <small class="text-muted">Contenuti desiderati da identificare e completare.</small>
-    </div>
-</div>
-
-<p class="text-muted mb-3">
-    Contenuti desiderati. Da qui puoi identificare correttamente i media tramite database esterni.
+<h2>Wanted Media</h2>
+{% set stats = namespace(total=0, movies=0, series=0, missing=0, in_radarr=0) %}
+{% for item in items %}
+    {% set stats.total = stats.total + 1 %}
+    {% if item.media_type == "movie" %}{% set stats.movies = stats.movies + 1 %}{% endif %}
+    {% if item.media_type == "series" %}{% set stats.series = stats.series + 1 %}{% endif %}
+    {% if item.media_type == "movie" and not item.external_ids.get('tmdb') %}{% set stats.missing = stats.missing + 1 %}{% endif %}
+    {% if item.media_type == "series" and not item.external_ids.get('tvdb') %}{% set stats.missing = stats.missing + 1 %}{% endif %}
+    {% if item.category == "anime" and not item.external_ids.get('anilist') %}{% set stats.missing = stats.missing + 1 %}{% endif %}
+    {% if item.external_ids.get('tmdb') and (item.external_ids.get('tmdb') in radarr_tmdb) %}{% set stats.in_radarr = stats.in_radarr + 1 %}{% endif %}
+{% endfor %}
+<p>
+    Total: {{ stats.total }} |
+    Movie: {{ stats.movies }} |
+    Series: {{ stats.series }} |
+    ID da sistemare: {{ stats.missing }} |
+    In Radarr: {{ stats.in_radarr }}
 </p>
 
 <form id="bulk-delete-form" method="post" action="{{ url_for('wanted.wanted_bulk_delete') }}"></form>
@@ -111,8 +59,16 @@
         <span class="input-group-text"><i class="bi bi-search"></i></span>
         <input id="wanted-title-search" type="text" class="form-control" placeholder="Cerca per titolo...">
     </div>
+    <div class="input-group input-group-sm" style="max-width: 220px;">
+        <span class="input-group-text">Tipo</span>
+        <select id="wanted-type-filter" class="form-select">
+            <option value="all">Tutti</option>
+            <option value="movie">Movie</option>
+            <option value="series">Series</option>
+        </select>
+    </div>
     <button type="button" class="btn btn-sm btn-outline-secondary" id="select-visible-btn">
-        Seleziona visibili
+        Seleziona tutti
     </button>
     <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-selection-btn">
         Deseleziona
@@ -130,29 +86,9 @@
     </button>
 </div>
 
-<div class="d-flex flex-wrap gap-3 align-items-center mb-3 p-2 border rounded-3 bg-light">
-    <div class="input-group input-group-sm" style="max-width: 220px;">
-        <span class="input-group-text">Tipo</span>
-        <select id="wanted-type-filter" class="form-select">
-            <option value="all">Tutti</option>
-            <option value="movie">Movie</option>
-            <option value="series">Series</option>
-        </select>
-    </div>
-    <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="wanted-radarr-eligible">
-        <label class="form-check-label" for="wanted-radarr-eligible">Inviabili Radarr</label>
-    </div>
-    <div class="form-check form-switch">
-        <input class="form-check-input" type="checkbox" id="wanted-missing-ids">
-        <label class="form-check-label" for="wanted-missing-ids">ID da sistemare</label>
-    </div>
-    <button type="button" class="btn btn-sm btn-outline-secondary" id="wanted-clear-filters">Reset filtri</button>
-</div>
 
-<div class="card border-0 shadow-sm">
-    <div class="card-body p-0" style="overflow: auto;">
-        <table id="wanted_table" class="table table-hover align-middle mb-0 wanted-table">
+
+<table id="wanted_table" class="table table-striped table-bordered wanted-table">
             <thead class="table-light">
                 <tr>
                     <th class="text-center" style="width: 40px;"></th>
@@ -180,7 +116,9 @@
                     {% set missing_external = true %}
                 {% endif %}
                 <tr data-media-type="{{ item.media_type }}"
+                    data-category="{{ item.category or '' }}"
                     data-has-tmdb="{{ '1' if tmdb_id else '0' }}"
+                    data-tmdb-id="{{ tmdb_id or '' }}"
                     data-in-radarr="{{ '1' if in_radarr else '0' }}"
                     data-missing-external="{{ '1' if missing_external else '0' }}">
 
@@ -320,7 +258,7 @@
                                 {% else %}
                                     <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" disabled>
                                         <i class="bi bi-cloud-download"></i>
-                                        TMDB richiesto
+                                        no TMDB
                                     </button>
                                 {% endif %}
                             {% endif %}
@@ -410,7 +348,7 @@
 
                             <div class="modal-header">
                                 <h5 class="modal-title">
-                                    Identifica su TMDB - {{ item.title }}
+                                    Identifica su TMDB - {{ item.title }}{% if item.year %} ({{ item.year }}){% endif %}
                                 </h5>
                                 <button type="button" class="btn-close"
                                         data-bs-dismiss="modal"></button>
@@ -535,13 +473,13 @@
                                         data-bs-dismiss="modal">
                                     Annulla
                                 </button>
-                                <form method="post"
-                                      action="{{ url_for('wanted.wanted_delete', media_item_id=item.id) }}">
-                                    <button type="submit" class="btn btn-danger d-inline-flex align-items-center gap-1">
-                                        <i class="bi bi-trash"></i>
-                                        Elimina
-                                    </button>
-                                </form>
+                                <button type="button"
+                                        class="btn btn-danger d-inline-flex align-items-center gap-1 delete-single-btn"
+                                        data-media-id="{{ item.id }}"
+                                        data-url="{{ url_for('wanted.wanted_delete', media_item_id=item.id) }}">
+                                    <i class="bi bi-trash"></i>
+                                    Elimina
+                                </button>
                             </div>
 
                         </div>
@@ -550,7 +488,7 @@
 
             {% endfor %}
             </tbody>
-        </table>
+</table>
 
         <!-- ================= RADARR SINGLE ADD MODAL ================= -->
         <div class="modal fade"
@@ -571,6 +509,7 @@
                         <input type="hidden" id="radarr-add-media-id" value="">
                         <input type="hidden" id="radarr-default-root" value="{{ radarr_defaults.root_folder or '' }}">
                         <input type="hidden" id="radarr-default-profile" value="{{ radarr_defaults.profile_id or '' }}">
+                        <input type="hidden" id="radarr-default-search" value="{{ '1' if radarr_defaults.enable_search else '0' }}">
                         <div class="mb-3">
                             <label class="form-label">Root folder</label>
                             <select class="form-select form-select-sm" id="radarr-root-select">
@@ -582,6 +521,10 @@
                             <select class="form-select form-select-sm" id="radarr-profile-select">
                                 <option value="">Caricamento...</option>
                             </select>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="radarr-search-enable">
+                            <label class="form-check-label" for="radarr-search-enable">Avvia ricerca su Radarr</label>
                         </div>
                         <div class="alert alert-info d-none" id="radarr-add-status">Invio a Radarr in corso...</div>
                         <div class="alert alert-danger d-none" id="radarr-add-error">Errore durante il caricamento.</div>
@@ -636,6 +579,10 @@
                             <select class="form-select form-select-sm" id="bulk-radarr-profile">
                                 <option value="">Caricamento...</option>
                             </select>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="bulk-radarr-search-enable">
+                            <label class="form-check-label" for="bulk-radarr-search-enable">Avvia ricerca su Radarr</label>
                         </div>
                         <div class="alert alert-info d-none" id="bulk-radarr-status">Invio a Radarr in corso...</div>
                         <div class="alert alert-danger d-none" id="bulk-radarr-error">Errore durante il caricamento.</div>
@@ -741,9 +688,8 @@
                                 data-bs-dismiss="modal">
                             Annulla
                         </button>
-                        <button type="submit"
+                        <button type="button"
                                 class="btn btn-danger d-inline-flex align-items-center gap-1"
-                                form="bulk-delete-form"
                                 id="bulk-delete-confirm">
                             <i class="bi bi-trash"></i>
                             Elimina
@@ -765,49 +711,24 @@
 $(document).ready(function() {
     var wantedSearchTerm = '';
     var wantedTypeFilter = 'all';
-    var wantedRadarrEligibleOnly = false;
-    var wantedMissingIdsOnly = false;
+    var selectedIds = new Set();
+    var rowInfo = {};
+    var radarrBase = "{{ radarr_url }}";
+    
 
-    function isRadarrEligibleRow($row) {
-        return $row.data('media-type') === 'movie' &&
-            ($row.data('has-tmdb') === 1 || $row.data('has-tmdb') === '1') &&
-            !($row.data('in-radarr') === 1 || $row.data('in-radarr') === '1');
+    function isRadarrEligibleInfo(info) {
+        if (!info) {
+            return false;
+        }
+        return info.mediaType === 'movie' && info.hasTmdb && !info.inRadarr;
     }
-
-    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
-        if (settings.nTable.id !== 'wanted_table') {
-            return true;
-        }
-        var title = (data[1] || '').toLowerCase();
-        var matchesSearch = !wantedSearchTerm || title.indexOf(wantedSearchTerm) !== -1;
-        if (!matchesSearch) {
-            return false;
-        }
-        var row = settings.aoData[dataIndex] && settings.aoData[dataIndex].nTr;
-        if (!row) {
-            return true;
-        }
-        var $row = $(row);
-        var mediaType = $row.data('media-type');
-        var missingExternal = $row.data('missing-external');
-
-        if (wantedTypeFilter !== 'all' && mediaType !== wantedTypeFilter) {
-            return false;
-        }
-        if (wantedRadarrEligibleOnly && !isRadarrEligibleRow($row)) {
-            return false;
-        }
-        if (wantedMissingIdsOnly && !(missingExternal === 1 || missingExternal === '1')) {
-            return false;
-        }
-        return true;
-    });
 
     var table = $('#wanted_table').DataTable({
         paging: true,
         ordering: true,
-        searching: false,
-        order: [[1, "asc"]],
+        searching: true,
+        order: [],
+        autoWidth: false,
         pageLength: 50,
         lengthMenu: [25, 50, 100, 200],
         columnDefs: [
@@ -817,6 +738,69 @@ $(document).ready(function() {
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
 
+    function cacheRowInfo() {
+        rowInfo = {};
+        table.rows().nodes().to$().each(function() {
+            var $row = $(this);
+            var id = $row.find('.wanted-select').val();
+            if (!id) {
+                return;
+            }
+            rowInfo[id] = {
+                id: id,
+                mediaType: $row.data('media-type'),
+                category: $row.data('category') || '',
+                hasTmdb: $row.data('has-tmdb') === 1 || $row.data('has-tmdb') === '1',
+                tmdbId: $row.data('tmdb-id') || '',
+                inRadarr: $row.data('in-radarr') === 1 || $row.data('in-radarr') === '1',
+                missingExternal: $row.data('missing-external') === 1 || $row.data('missing-external') === '1',
+                title: $row.find('.wanted-title').text().trim()
+            };
+        });
+    }
+
+    function updateRowInRadarr(mediaId) {
+        var $row = $('.wanted-select[value="' + mediaId + '"]').closest('tr');
+        if (!$row.length) {
+            return;
+        }
+        $row.attr('data-in-radarr', '1');
+        $row.data('in-radarr', '1');
+        var tmdbId = $row.data('tmdb-id');
+        if (tmdbId && !$row.find('.badge-radarr').length) {
+            $row.find('td').eq(4).append(
+                '<a class="badge badge-radarr text-decoration-none" href="' + radarrBase + '/movie/' + tmdbId + '" target="_blank" rel="noopener" data-bs-toggle="tooltip" data-bs-placement="top" title="Radarr ' + tmdbId + '">Radarr</a>'
+            );
+        }
+        $row.find('.radarr-add-btn').prop('disabled', true);
+        cacheRowInfo();
+        table.draw(false);
+        updateBulkState();
+        initTooltips();
+    }
+
+    function removeRowsByIds(ids) {
+        ids.forEach(function(id) {
+            var $row = $('.wanted-select[value="' + id + '"]').closest('tr');
+            if ($row.length) {
+                table.row($row).remove();
+            }
+            selectedIds.delete(id);
+        });
+        table.draw(false);
+        cacheRowInfo();
+        syncSelectionToTable();
+        updateBulkState();
+    }
+
+    function syncSelectionToTable() {
+        $('.wanted-select').each(function() {
+            var id = $(this).val();
+            $(this).prop('checked', selectedIds.has(id));
+        });
+    }
+
+
     function initTooltips() {
         var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
         tooltipTriggerList.forEach(function (tooltipTriggerEl) {
@@ -825,17 +809,13 @@ $(document).ready(function() {
     }
 
     function getRadarrEligibleIds() {
-        return $('.wanted-select:checked').map(function() {
-            var $row = $(this).closest('tr');
-            if (!isRadarrEligibleRow($row)) {
-                return null;
-            }
-            return $(this).val();
-        }).get().filter(function(id) { return id; });
+        return Array.from(selectedIds).filter(function(id) {
+            return isRadarrEligibleInfo(rowInfo[id]);
+        });
     }
 
     function updateBulkState() {
-        var count = $('.wanted-select:checked').length;
+        var count = selectedIds.size;
         var eligible = getRadarrEligibleIds();
         var excluded = count - eligible.length;
         $('#bulk-delete-btn').prop('disabled', count === 0);
@@ -851,67 +831,82 @@ $(document).ready(function() {
         }
     }
 
-    function applySearch() {
-        var value = $('#wanted-title-search').val() || '';
-        wantedSearchTerm = value.toLowerCase();
+    function applyFilters() {
+        var typeFilter = wantedTypeFilter === 'all' ? '' : '\\\\b' + wantedTypeFilter + '\\\\b';
+        table.column(1).search(wantedSearchTerm || '');
+        table.column(3).search(typeFilter, true, false);
         table.draw();
         updateBulkState();
     }
 
+    function applySearch() {
+        var value = $('#wanted-title-search').val() || '';
+        wantedSearchTerm = value.toLowerCase();
+        applyFilters();
+    }
+
     function getSelectedIds() {
-        return $('.wanted-select:checked').map(function() { return $(this).val(); }).get();
+        return Array.from(selectedIds);
     }
 
     $('#wanted-type-filter').on('change', function() {
         wantedTypeFilter = $(this).val() || 'all';
-        table.draw();
-        updateBulkState();
+        applyFilters();
     });
 
-    $('#wanted-radarr-eligible').on('change', function() {
-        wantedRadarrEligibleOnly = $(this).is(':checked');
-        table.draw();
-        updateBulkState();
-    });
 
-    $('#wanted-missing-ids').on('change', function() {
-        wantedMissingIdsOnly = $(this).is(':checked');
-        table.draw();
-        updateBulkState();
-    });
-
-    $('#wanted-clear-filters').on('click', function() {
-        wantedTypeFilter = 'all';
-        wantedRadarrEligibleOnly = false;
-        wantedMissingIdsOnly = false;
-        $('#wanted-type-filter').val('all');
-        $('#wanted-radarr-eligible').prop('checked', false);
-        $('#wanted-missing-ids').prop('checked', false);
-        table.draw();
-        updateBulkState();
-    });
-
-    $('#wanted-title-search').on('input keyup change', function(e) {
-        if (e.type === 'keyup' && e.key && e.key !== 'Enter') {
-            return;
-        }
-        if (e.type === 'keyup' && e.key === 'Enter') {
-            e.preventDefault();
-        }
+    $('#wanted-title-search').on('input', function() {
         applySearch();
     });
 
-    $(document).on('change', '.wanted-select', updateBulkState);
+    $(document).on('change', '.wanted-select', function() {
+        var id = $(this).val();
+        if ($(this).is(':checked')) {
+            selectedIds.add(id);
+        } else {
+            selectedIds.delete(id);
+        }
+        updateBulkState();
+    });
 
     $('#select-visible-btn').on('click', function() {
-        var nodes = table.rows({ page: 'current', search: 'applied' }).nodes();
-        $(nodes).find('.wanted-select').prop('checked', true);
+        var nodes = table.rows({ search: 'applied' }).nodes();
+        $(nodes).find('.wanted-select').each(function() {
+            selectedIds.add($(this).val());
+        });
+        syncSelectionToTable();
         updateBulkState();
     });
 
     $('#clear-selection-btn').on('click', function() {
-        $('.wanted-select').prop('checked', false);
+        selectedIds.clear();
+        syncSelectionToTable();
         updateBulkState();
+    });
+
+    $('#bulk-delete-confirm').on('click', function() {
+        var ids = Array.from(selectedIds);
+        if (!ids.length) {
+            return;
+        }
+        var button = $(this);
+        button.prop('disabled', true).text('Elimino...');
+        $.ajax({
+            url: $('#bulk-delete-form').attr('action'),
+            method: 'POST',
+            data: { media_ids: ids }
+        }).done(function() {
+            removeRowsByIds(ids);
+            var modalEl = document.getElementById('bulkDeleteModal');
+            if (modalEl) {
+                var modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) {
+                    modal.hide();
+                }
+            }
+        }).always(function() {
+            button.prop('disabled', false).text('Elimina');
+        });
     });
 
     $('#bulkDeleteModal').on('show.bs.modal', updateBulkState);
@@ -926,8 +921,8 @@ $(document).ready(function() {
             var title = item.title || 'Senza titolo';
             var year = item.year ? ' (' + item.year + ')' : '';
             var externalId = item.external_id || '';
-            var imdb = item.imdb_id ? ' · IMDB: ' + item.imdb_id : '';
-            var link = item.link || ' ';
+            var imdb = item.imdb_id ? ' IMDB: ' + item.imdb_id : '';
+            var link = item.link || '';
             if (!link && provider === 'tmdb' && externalId) {
                 link = 'https://www.themoviedb.org/movie/' + externalId;
             }
@@ -938,8 +933,8 @@ $(document).ready(function() {
                         '<div class="text-muted small">ID: ' + externalId + imdb + link + '</div>' +
                     '</div>' +
                     '<div class="d-flex align-items-center gap-2">' +
-                        (link ? '<a class="btn btn-sm btn-outline-secondary" href="' + link + '" target="_blank" rel="noopener">Apri</a>' : '') +
-                        '<button class="btn btn-sm btn-primary select-external-btn" data-source="' + provider + '" data-external-id="' + externalId + '" data-media-id="' + item.media_item_id + '"' + (link ? ' data-link=\"' + link + '\"' : '') + '>Seleziona</button>' +
+                        (link ? '<a class="btn btn-sm btn-outline-secondary" href="' + link + '" target="_blank" rel="noopener noreferrer">Apri</a>' : '') +
+                        '<button class="btn btn-sm btn-primary select-external-btn" data-source="' + provider + '" data-external-id="' + externalId + '" data-media-id="' + item.media_item_id + '"' + (link ? ' data-link="' + link + '"' : '') + '>Seleziona</button>' +
                     '</div>' +
                 '</li>'
             );
@@ -989,6 +984,75 @@ $(document).ready(function() {
         }
     });
 
+    function applyExternalUpdate(mediaId, source, externalId, link) {
+        var $checkbox = $('.wanted-select[value="' + mediaId + '"]');
+        var $row = $checkbox.closest('tr');
+        if (!$row.length) {
+            return;
+        }
+        var mediaType = $row.data('media-type');
+        var category = $row.data('category');
+        var title = $row.find('.wanted-title').text().trim();
+        var idCell = $row.find('td').eq(4);
+        if (source === 'tmdb') {
+            $row.attr('data-has-tmdb', '1');
+            $row.data('has-tmdb', '1');
+            $row.attr('data-tmdb-id', externalId);
+            $row.data('tmdb-id', externalId);
+            if (mediaType === 'movie') {
+                $row.attr('data-missing-external', '0');
+                $row.data('missing-external', '0');
+            }
+            if (!link) {
+                link = (mediaType === 'series')
+                    ? 'https://www.themoviedb.org/tv/' + externalId
+                    : 'https://www.themoviedb.org/movie/' + externalId;
+            }
+            if (!idCell.find('.badge-tmdb').length) {
+                idCell.append(
+                    '<a class="badge badge-tmdb text-decoration-none" href="' + link + '" target="_blank" rel="noopener" data-bs-toggle="tooltip" data-bs-placement="top" title="' + externalId + '">TMDB</a>'
+                );
+            }
+            var $actions = $row.find('.wanted-actions');
+            if (!$actions.find('.radarr-add-btn').length) {
+                $actions.find('.btn-outline-secondary:disabled').first().replaceWith(
+                    '<button class="btn btn-sm btn-radarr d-inline-flex align-items-center gap-1 radarr-add-btn" data-bs-toggle="modal" data-bs-target="#radarrAddModal" data-media-id="' + mediaId + '" data-title="' + title + '">' +
+                    '<i class="bi bi-cloud-download"></i>Radarr</button>'
+                );
+            }
+        } else if (source === 'tvdb') {
+            if (mediaType === 'series') {
+                $row.attr('data-missing-external', '0');
+                $row.data('missing-external', '0');
+            }
+            if (!link) {
+                link = 'https://thetvdb.com/series/' + externalId;
+            }
+            if (!idCell.find('.badge-imdb').length) {
+                idCell.append(
+                    '<a class="badge badge-imdb text-decoration-none" href="' + link + '" target="_blank" rel="noopener" data-bs-toggle="tooltip" data-bs-placement="top" title="' + externalId + '">TVDB</a>'
+                );
+            }
+        } else if (source === 'anilist') {
+            if (category === 'anime') {
+                $row.attr('data-missing-external', '0');
+                $row.data('missing-external', '0');
+            }
+            if (!link) {
+                link = 'https://anilist.co/anime/' + externalId;
+            }
+            if (!idCell.find('.badge-anilist').length) {
+                idCell.append(
+                    '<a class="badge badge-anilist text-decoration-none" href="' + link + '" target="_blank" rel="noopener" data-bs-toggle="tooltip" data-bs-placement="top" title="' + externalId + '">AniList</a>'
+                );
+            }
+        }
+        cacheRowInfo();
+        table.draw(false);
+        updateBulkState();
+        initTooltips();
+    }
+
     $(document).on('click', '.select-external-btn', function() {
         var button = $(this);
         var mediaId = button.data('media-id');
@@ -1003,9 +1067,41 @@ $(document).ready(function() {
             contentType: 'application/json',
             data: JSON.stringify({ source: source, external_id: externalId, link: link })
         }).done(function() {
-            location.reload();
+            applyExternalUpdate(mediaId, source, externalId, link);
+            var modalEl = button.closest('.modal')[0];
+            if (modalEl) {
+                var modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) {
+                    modal.hide();
+                }
+            }
         }).fail(function() {
             button.prop('disabled', false).text('Seleziona');
+        });
+    });
+
+    $(document).on('click', '.delete-single-btn', function() {
+        var button = $(this);
+        var mediaId = button.data('media-id');
+        var url = button.data('url');
+        if (!mediaId || !url) {
+            return;
+        }
+        button.prop('disabled', true).text('Elimino...');
+        $.ajax({
+            url: url,
+            method: 'POST'
+        }).done(function() {
+            removeRowsByIds([String(mediaId)]);
+            var modalEl = button.closest('.modal')[0];
+            if (modalEl) {
+                var modal = bootstrap.Modal.getInstance(modalEl);
+                if (modal) {
+                    modal.hide();
+                }
+            }
+        }).always(function() {
+            button.prop('disabled', false).text('Elimina');
         });
     });
 
@@ -1049,11 +1145,17 @@ $(document).ready(function() {
     function applyRadarrDefaults($rootSelect, $profileSelect) {
         var defaultRoot = $('#radarr-default-root').val();
         var defaultProfile = $('#radarr-default-profile').val();
+        var defaultSearch = $('#radarr-default-search').val();
         if (defaultRoot) {
             $rootSelect.val(defaultRoot);
         }
         if (defaultProfile) {
             $profileSelect.val(defaultProfile);
+        }
+        if (defaultSearch !== undefined) {
+            var enable = String(defaultSearch) === '1';
+            $('#radarr-search-enable').prop('checked', enable);
+            $('#bulk-radarr-search-enable').prop('checked', enable);
         }
     }
 
@@ -1085,6 +1187,7 @@ $(document).ready(function() {
         var mediaId = $('#radarr-add-media-id').val();
         var root = $('#radarr-root-select').val();
         var profile = $('#radarr-profile-select').val();
+        var enableSearch = $('#radarr-search-enable').is(':checked');
         if (!mediaId || !root || !profile) {
             $('#radarr-add-error').removeClass('d-none').text('Seleziona root e profilo.');
             return;
@@ -1096,11 +1199,18 @@ $(document).ready(function() {
             url: '/api/wanted/' + mediaId + '/radarr/add',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ root_folder: root, profile_id: profile })
+            data: JSON.stringify({ root_folder: root, profile_id: profile, enable_search: enableSearch })
         }).done(function() {
             $('#radarr-add-status').removeClass('d-none').text('Inviato a Radarr. Aggiorno la lista...');
             setTimeout(function() {
-                location.reload();
+                updateRowInRadarr(mediaId);
+                var modalEl = document.getElementById('radarrAddModal');
+                if (modalEl) {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }
             }, 900);
         }).fail(function() {
             button.prop('disabled', false).text('Invia');
@@ -1114,6 +1224,7 @@ $(document).ready(function() {
         var root = $('#bulk-radarr-root').val();
         var profile = $('#bulk-radarr-profile').val();
         var mediaIds = getRadarrEligibleIds();
+        var enableSearch = $('#bulk-radarr-search-enable').is(':checked');
         if (!mediaIds.length || !root || !profile) {
             $('#bulk-radarr-error').removeClass('d-none').text('Seleziona elementi, root e profilo.');
             return;
@@ -1125,11 +1236,27 @@ $(document).ready(function() {
             url: '/api/wanted/radarr/bulk_add',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ media_ids: mediaIds, root_folder: root, profile_id: profile })
-        }).done(function() {
+            data: JSON.stringify({ media_ids: mediaIds, root_folder: root, profile_id: profile, enable_search: enableSearch })
+        }).done(function(resp) {
             $('#bulk-radarr-status').removeClass('d-none').text('Inviati a Radarr. Aggiorno la lista...');
             setTimeout(function() {
-                location.reload();
+                var updatedIds = [];
+                if (resp && resp.added_ids) {
+                    updatedIds = updatedIds.concat(resp.added_ids);
+                }
+                if (resp && resp.skipped_ids) {
+                    updatedIds = updatedIds.concat(resp.skipped_ids);
+                }
+                updatedIds.forEach(function(id) {
+                    updateRowInRadarr(id);
+                });
+                var modalEl = document.getElementById('bulkRadarrModal');
+                if (modalEl) {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }
             }, 900);
         }).fail(function() {
             button.prop('disabled', false).text('Invia');
@@ -1255,15 +1382,37 @@ $(document).ready(function() {
         }).done(function() {
             button.text('Completato');
             setTimeout(function() {
-                location.reload();
+                var mergeIds = [];
+                mergePreviewData.merge_groups.forEach(function(group) {
+                    group.items.forEach(function(item) {
+                        if (item.id !== group.keep_id) {
+                            mergeIds.push(String(item.id));
+                        }
+                    });
+                });
+                if (mergeIds.length) {
+                    removeRowsByIds(mergeIds);
+                }
+                var modalEl = document.getElementById('mergeWantedModal');
+                if (modalEl) {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }
             }, 900);
         }).fail(function() {
             button.prop('disabled', false).text('Esegui merge');
         });
     });
 
+    cacheRowInfo();
+    applyFilters();
+    syncSelectionToTable();
+
     table.on('draw', function() {
         initTooltips();
+        syncSelectionToTable();
     });
     initTooltips();
 });

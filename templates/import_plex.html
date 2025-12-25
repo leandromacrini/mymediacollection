@@ -19,11 +19,48 @@
     <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
         <span class="badge bg-primary">Film: {{ preview.movies|length }}</span>
         <span class="badge bg-secondary">Serie: {{ preview.series|length }}</span>
+        {% if preview.excluded %}
+            <span class="badge bg-warning text-dark">Esclusi: {{ preview.excluded|length }}</span>
+        {% endif %}
         <span class="badge bg-info text-dark">Selezionati: <span id="selected-total">0</span></span>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="select-all-btn">Seleziona tutti</button>
         <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-all-btn">Deseleziona</button>
         <button type="submit" class="btn btn-success" id="import-btn">Importa selezionati</button>
     </div>
+    {% if preview.excluded %}
+    <div class="mb-3">
+        <button class="btn btn-sm btn-outline-warning" type="button" data-bs-toggle="collapse" data-bs-target="#plex-excluded" aria-expanded="false" aria-controls="plex-excluded">
+            Esclusi ({{ preview.excluded|length }})
+        </button>
+    </div>
+    <div class="collapse mb-4" id="plex-excluded">
+        <div class="alert alert-warning py-2 small">
+            Esclusi perche gia presenti nei wanted (match esatto titolo/anno).
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Titolo</th>
+                        <th>Anno</th>
+                        <th>Tipo</th>
+                        <th>Motivo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for ex in preview.excluded %}
+                    <tr>
+                        <td>{{ ex.title }}</td>
+                        <td>{{ ex.year }}</td>
+                        <td>{{ ex.media_type }}</td>
+                        <td class="text-muted">{{ ex.reason }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="row g-2 mb-4">
         <div class="col-12 col-md-6">
@@ -38,6 +75,16 @@
                 <button type="button" class="btn btn-sm btn-primary type-toggle" data-type="movie">Film</button>
                 <button type="button" class="btn btn-sm btn-secondary type-toggle" data-type="series">Serie</button>
             </div>
+        </div>
+    </div>
+
+    <div class="row g-2 mb-4">
+        <div class="col-12 col-md-8">
+            <input type="text" class="form-control" id="plex-basepath" placeholder="Seleziona per cartella base (es. N:\\Media\\Cortometraggi)">
+        </div>
+        <div class="col-12 col-md-4 d-flex align-items-center gap-2">
+            <button type="button" class="btn btn-sm btn-outline-primary" id="select-base-btn">Seleziona base</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-base-btn">Deseleziona base</button>
         </div>
     </div>
 
@@ -117,7 +164,6 @@
 </form>
 
 <script>
-var lastChecked = null;
 
 function updateSelectionStats() {
     var selected = document.querySelectorAll('.plex-select:checked');
@@ -187,21 +233,44 @@ document.getElementById('clear-all-btn').addEventListener('click', function() {
     updateSelectionStats();
     applyFilters();
 });
-document.querySelectorAll('.plex-select').forEach(function(el) {
-    el.addEventListener('change', function(event) {
-        if (event.shiftKey && lastChecked) {
-            var checkboxes = Array.from(document.querySelectorAll('.plex-select'));
-            var start = checkboxes.indexOf(el);
-            var end = checkboxes.indexOf(lastChecked);
-            if (start > -1 && end > -1) {
-                var min = Math.min(start, end);
-                var max = Math.max(start, end);
-                for (var i = min; i <= max; i += 1) {
-                    checkboxes[i].checked = lastChecked.checked;
-                }
+function normalizeBasePath(value) {
+    if (!value) {
+        return '';
+    }
+    var cleaned = value.trim().toLowerCase().replace(/\//g, '\\');
+    while (cleaned.endsWith('\\')) {
+        cleaned = cleaned.slice(0, -1);
+    }
+    return cleaned;
+}
+
+function toggleBaseSelection(checked) {
+    var basePath = normalizeBasePath(document.getElementById('plex-basepath').value);
+    if (!basePath) {
+        return;
+    }
+    document.querySelectorAll('.plex-row').forEach(function(row) {
+        var rowPath = row.getAttribute('data-path') || '';
+        if (rowPath.startsWith(basePath)) {
+            var checkbox = row.querySelector('.plex-select');
+            if (checkbox) {
+                checkbox.checked = checked;
             }
         }
-        lastChecked = el;
+    });
+    updateSelectionStats();
+    applyFilters();
+}
+
+document.getElementById('select-base-btn').addEventListener('click', function() {
+    toggleBaseSelection(true);
+});
+document.getElementById('clear-base-btn').addEventListener('click', function() {
+    toggleBaseSelection(false);
+});
+
+document.querySelectorAll('.plex-select').forEach(function(el) {
+    el.addEventListener('change', function(event) {
         updateSelectionStats();
         applyFilters();
     });
@@ -247,6 +316,28 @@ updateSelectionStats();
 </div>
 
 <style>
+.plex-table th.sortable {
+    cursor: pointer;
+    position: relative;
+    padding-right: 1.4rem;
+}
+.plex-table th.sortable::after {
+    content: '^';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    opacity: 0.3;
+}
+.plex-table th.sorted-desc::after {
+    content: 'v';
+    opacity: 0.9;
+}
+.plex-table th.sorted-asc::after {
+    content: '^';
+    opacity: 0.9;
+}
 .plex-loading {
     position: fixed;
     inset: 0;

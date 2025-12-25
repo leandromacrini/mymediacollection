@@ -1,9 +1,32 @@
 {% extends "layout.html" %}
 
 {% block content %}
+<style>
+    #sonarr_table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    #sonarr_table th,
+    #sonarr_table td {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #sonarr_table th:nth-child(1),
+    #sonarr_table td:nth-child(1) { width: 50%; }
+    #sonarr_table th:nth-child(2),
+    #sonarr_table td:nth-child(2) { width: 10%; }
+    #sonarr_table th:nth-child(3),
+    #sonarr_table td:nth-child(3) { width: 20%; }
+    #sonarr_table th:nth-child(4),
+    #sonarr_table td:nth-child(4) { width: 10%; }
+</style>
 <h2>Sonarr Series</h2>
-<p>Total Series: {{ series|length }}</p>
-<p>Monitored: {{ total_monitored }} | Not Monitored: {{ total_unmonitored }}</p>
+<p>
+    Total Series: {{ series|length }} |
+    Monitorati: {{ total_monitored }} |
+    Non monitorati: {{ total_unmonitored }}
+</p>
 
 <table id="sonarr_table" class="table table-striped table-bordered">
     <thead>

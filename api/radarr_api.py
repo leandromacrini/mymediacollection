@@ -32,6 +32,7 @@ class RadarrMedia:
     imdb_id: str | None
     root_folder: str
     monitored: bool
+    has_file: bool = False
 
 # --- API Functions ---
 def radarr_get_client(db: db_core.MediaDB) -> dict:
@@ -57,7 +58,8 @@ def radarr_get_all_movies(db: db_core.MediaDB | None = None) -> List[RadarrMedia
             tmdb_id=m.get("tmdbId"),
             imdb_id=m.get("imdbId"),
             root_folder=m.get("rootFolderPath"),
-            monitored=m.get("monitored", True)
+            monitored=m.get("monitored", True),
+            has_file=m.get("hasFile", False)
         )
         result.append(media)
     return result
@@ -116,7 +118,8 @@ def radarr_get_by_tmdb(tmdb_id: int, db: db_core.MediaDB | None = None) -> Radar
         tmdb_id=m.get("tmdbId"),
         imdb_id=m.get("imdbId"),
         root_folder=m.get("rootFolderPath"),
-        monitored=m.get("monitored", True)
+        monitored=m.get("monitored", True),
+        has_file=m.get("hasFile", False)
     )
 
 def radarr_get_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> RadarrMedia | None:
@@ -138,7 +141,8 @@ def radarr_get_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> Radar
         tmdb_id=m.get("tmdbId"),
         imdb_id=m.get("imdbId"),
         root_folder=m.get("rootFolderPath"),
-        monitored=m.get("monitored", True)
+        monitored=m.get("monitored", True),
+        has_file=m.get("hasFile", False)
     )
 
 def radarr_add_movie(
@@ -195,6 +199,7 @@ def radarr_lookup(title: str, year: int | None = None, db: db_core.MediaDB | Non
             tmdb_id=m.get("tmdbId"),
             imdb_id=m.get("imdbId"),
             root_folder=cfg["root_folder"],
-            monitored=True
+            monitored=True,
+            has_file=m.get("hasFile", False)
         ))
     return media_list
