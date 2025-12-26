@@ -12,13 +12,28 @@ bp = Blueprint("wanted", __name__)
 
 @bp.route("/wanted")
 def wanted_view():
+    radarr_cfg = db.get_service_config("Radarr")
+    radarr_url = radarr_api.radarr_get_client(db)["url"]
+    return render_template(
+        "wanted.html",
+        radarr_url=radarr_url,
+        radarr_defaults={
+            "root_folder": radarr_cfg.get("radarr_root_folder"),
+            "profile_id": radarr_cfg.get("radarr_profile_id"),
+            "enable_search": radarr_cfg.get("radarr_enable_search")
+        }
+    )
+
+
+@bp.route("/api/wanted/content")
+def wanted_content():
     wanted_list = db.get_wanted_items(limit=None)
     radarr_url = radarr_api.radarr_get_client(db)["url"]
     radarr_movies = radarr_api.radarr_get_all_movies(db)
     radarr_tmdb = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id}
     radarr_cfg = db.get_service_config("Radarr")
     return render_template(
-        "wanted.html",
+        "partials/wanted_content.html",
         items=wanted_list,
         radarr_tmdb=radarr_tmdb,
         radarr_url=radarr_url,

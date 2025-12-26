@@ -9,9 +9,8 @@ bp = Blueprint("radarr", __name__)
 
 @bp.route("/radarr")
 def radarr_view():
-    movies = radarr_api.radarr_get_all_movies(db)
     radarr_url = radarr_api.radarr_get_client(db)["url"]
-    return render_template("radarr.html", movies=movies, radarr_url=radarr_url)
+    return render_template("radarr.html", radarr_url=radarr_url)
 
 
 @bp.route("/api/radarr/options")
@@ -19,6 +18,36 @@ def radarr_options():
     roots = radarr_api.radarr_get_root_folders(db)
     profiles = radarr_api.radarr_get_quality_profiles(db)
     return jsonify({"root_folders": roots, "profiles": profiles})
+
+
+@bp.route("/api/radarr/list")
+def radarr_list():
+    movies = radarr_api.radarr_get_all_movies(db)
+    items = []
+    monitored = 0
+    downloaded = 0
+    for m in movies:
+        if m.monitored:
+            monitored += 1
+        if m.has_file:
+            downloaded += 1
+        items.append({
+            "title": m.title,
+            "year": m.year,
+            "tmdb_id": m.tmdb_id,
+            "imdb_id": m.imdb_id,
+            "monitored": m.monitored,
+            "has_file": m.has_file
+        })
+    return jsonify({
+        "ok": True,
+        "items": items,
+        "counts": {
+            "total": len(items),
+            "monitored": monitored,
+            "downloaded": downloaded
+        }
+    })
 
 
 @bp.route("/api/radarr/sync/preview")

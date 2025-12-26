@@ -31,46 +31,51 @@
     .badge-tmdb { background: #01b4e4; color: #06202a; }
     .badge-anilist { background: #02a9ff; color: #06283d; }
     .badge-radarr { background: #f6a000; color: #2b1a00; }
+    .wanted-skeleton {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+    .wanted-skeleton__row {
+        height: 46px;
+        border-radius: 8px;
+        background: linear-gradient(90deg, #eceff3 25%, #f6f7f9 37%, #eceff3 63%);
+        background-size: 400% 100%;
+        animation: wanted-shimmer 1.2s ease-in-out infinite;
+    }
+    @keyframes wanted-shimmer {
+        0% { background-position: 100% 0; }
+        100% { background-position: 0 0; }
+    }
 </style>
 
 <h2><i class="bi bi-star me-2"></i>Wanted Media</h2>
-{% set stats = namespace(total=0, movies=0, series=0, missing=0, in_radarr=0) %}
-{% for item in items %}
-    {% set stats.total = stats.total + 1 %}
-    {% if item.media_type == "movie" %}{% set stats.movies = stats.movies + 1 %}{% endif %}
-    {% if item.media_type == "series" %}{% set stats.series = stats.series + 1 %}{% endif %}
-    {% if item.media_type == "movie" and not item.external_ids.get('tmdb') %}{% set stats.missing = stats.missing + 1 %}{% endif %}
-    {% if item.media_type == "series" and not item.external_ids.get('tvdb') %}{% set stats.missing = stats.missing + 1 %}{% endif %}
-    {% if item.category == "anime" and not item.external_ids.get('anilist') %}{% set stats.missing = stats.missing + 1 %}{% endif %}
-    {% if item.external_ids.get('tmdb') and (item.external_ids.get('tmdb') in radarr_tmdb) %}{% set stats.in_radarr = stats.in_radarr + 1 %}{% endif %}
-{% endfor %}
-<p>
-    Total: {{ stats.total }} |
-    Movie: {{ stats.movies }} |
-    Series: {{ stats.series }} |
-    ID da sistemare: {{ stats.missing }} |
-    In Radarr: {{ stats.in_radarr }}
-</p>
 
-<form id="bulk-delete-form" method="post" action="{{ url_for('wanted.wanted_bulk_delete') }}"></form>
+<p>
+    Total: <span id="wanted-count-total">...</span> |
+    Movie: <span id="wanted-count-movies">...</span> |
+    Series: <span id="wanted-count-series">...</span> |
+    ID da sistemare: <span id="wanted-count-missing">...</span> |
+    In Radarr: <span id="wanted-count-in-radarr">...</span>
+</p>
 
 <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
     <div class="input-group input-group-sm" style="max-width: 320px;">
         <span class="input-group-text"><i class="bi bi-search"></i></span>
-        <input id="wanted-title-search" type="text" class="form-control" placeholder="Cerca per titolo...">
+        <input id="wanted-title-search" type="text" class="form-control" placeholder="Cerca per titolo..." disabled>
     </div>
     <div class="input-group input-group-sm" style="max-width: 220px;">
         <span class="input-group-text">Tipo</span>
-        <select id="wanted-type-filter" class="form-select">
+        <select id="wanted-type-filter" class="form-select" disabled>
             <option value="all">Tutti</option>
             <option value="movie">Movie</option>
             <option value="series">Series</option>
         </select>
     </div>
-    <button type="button" class="btn btn-sm btn-outline-secondary" id="select-visible-btn">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="select-visible-btn" disabled>
         Seleziona tutti
     </button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-selection-btn">
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-selection-btn" disabled>
         Deseleziona
     </button>
     <button type="button" class="btn btn-sm btn-danger" id="bulk-delete-btn" data-bs-toggle="modal" data-bs-target="#bulkDeleteModal" disabled>
@@ -80,643 +85,27 @@
         <i class="bi bi-cloud-download"></i>
         Invia a Radarr
     </button>
-    <button type="button" class="btn btn-sm btn-outline-dark" id="bulk-merge-btn" data-bs-toggle="modal" data-bs-target="#mergeWantedModal" disabled>
-        <i class="bi bi-layers"></i>
+    <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-merge-btn" data-bs-toggle="modal" data-bs-target="#mergeWantedModal" disabled>
+        <i class="bi bi-diagram-3"></i>
         Merge selezionati
     </button>
 </div>
 
-
-
-<table id="wanted_table" class="table table-striped table-bordered wanted-table">
-            <thead class="table-light">
-                <tr>
-                    <th class="text-center" style="width: 40px;"></th>
-                    <th style="min-width: 280px;">Media</th>
-                    <th style="width: 90px;">Anno</th>
-                    <th>Info</th>
-                    <th>Identificazione</th>
-                    <th>Azioni</th>
-                    <th class="text-end" style="width: 56px;"></th>
-                </tr>
-            </thead>
-
-            <tbody>
-            {% for item in items %}
-                {% set tmdb_id = item.external_ids.get('tmdb') %}
-                {% set in_radarr = tmdb_id and (tmdb_id in radarr_tmdb) %}
-                {% set missing_external = false %}
-                {% if item.media_type == "movie" and not tmdb_id %}
-                    {% set missing_external = true %}
-                {% endif %}
-                {% if item.media_type == "series" and not item.external_ids.get('tvdb') %}
-                    {% set missing_external = true %}
-                {% endif %}
-                {% if item.category == "anime" and not item.external_ids.get('anilist') %}
-                    {% set missing_external = true %}
-                {% endif %}
-                <tr data-media-type="{{ item.media_type }}"
-                    data-category="{{ item.category or '' }}"
-                    data-has-tmdb="{{ '1' if tmdb_id else '0' }}"
-                    data-tmdb-id="{{ tmdb_id or '' }}"
-                    data-in-radarr="{{ '1' if in_radarr else '0' }}"
-                    data-missing-external="{{ '1' if missing_external else '0' }}">
-
-                    <td class="text-center">
-                        <input class="form-check-input wanted-select"
-                               type="checkbox"
-                               name="media_ids"
-                               value="{{ item.id }}"
-                               data-media-type="{{ item.media_type }}"
-                               data-has-tmdb="{{ '1' if tmdb_id else '0' }}"
-                               form="bulk-delete-form">
-                    </td>
-
-                    <!-- MEDIA -->
-                    <td>
-                        <div class="wanted-title">{{ item.title }}</div>
-                        {% if item.original_title and item.original_title != item.title %}
-                            <div class="wanted-meta">Orig: {{ item.original_title }}</div>
-                        {% endif %}
-                    </td>
-
-                    <!-- YEAR -->
-                    <td class="wanted-year">
-                        {{ item.year }}
-                    </td>
-
-                    <!-- INFO -->
-                    <td>
-                        <div class="d-flex flex-wrap gap-1">
-                            <span class="badge bg-secondary">{{ item.media_type }}</span>
-                            {% if item.category %}
-                                <span class="badge bg-info text-dark">{{ item.category }}</span>
-                            {% endif %}
-                            {% if item.language %}
-                                <span class="badge bg-light text-dark">{{ item.language }}</span>
-                            {% endif %}
-                        </div>
-                    </td>
-
-            <!-- IDENTIFICATION STATUS -->
-            <td>
-                <div class="d-flex flex-wrap gap-1">
-                    {% if item.external_ids.get('tvdb') %}
-                        {% set tvdb_url = item.external_ids.get('tvdb_link') or ("https://thetvdb.com/series/" ~ item.external_ids.get('tvdb')) %}
-                        <a class="badge badge-imdb text-decoration-none"
-                           href="{{ tvdb_url }}"
-                           target="_blank"
-                           rel="noopener"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="{{ item.external_ids.get('tvdb') }}">
-                            TVDB
-                        </a>
-                    {% endif %}
-                    
-                    {% if item.external_ids.get('tmdb') %}
-                        {% if item.media_type == "series" %}
-                            {% set tmdb_url = "https://www.themoviedb.org/tv/" ~ item.external_ids.get('tmdb') %}
-                        {% else %}
-                            {% set tmdb_url = "https://www.themoviedb.org/movie/" ~ item.external_ids.get('tmdb') %}
-                        {% endif %}
-                        <a class="badge badge-tmdb text-decoration-none"
-                           href="{{ tmdb_url }}"
-                           target="_blank"
-                           rel="noopener"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="{{ item.external_ids.get('tmdb') }}">
-                            TMDB
-                        </a>
-                    {% endif %}
-
-                    {% if item.external_ids.get('anilist') %}
-                        {% set anilist_url = item.external_ids.get('anilist_link') or ("https://anilist.co/anime/" ~ item.external_ids.get('anilist')) %}
-                        <a class="badge badge-anilist text-decoration-none"
-                           href="{{ anilist_url }}"
-                           target="_blank"
-                           rel="noopener"
-                           data-bs-toggle="tooltip"
-                           data-bs-placement="top"
-                           title="{{ item.external_ids.get('anilist') }}">
-                            AniList
-                        </a>
-                    {% endif %}
-
-                    {% if item.media_type == "movie" %}
-                        {% if tmdb_id %}
-                            {% if in_radarr %}
-                                <a class="badge badge-radarr text-decoration-none"
-                                   href="{{ radarr_url }}/movie/{{ tmdb_id }}"
-                                   target="_blank"
-                                   rel="noopener"
-                                   data-bs-toggle="tooltip"
-                                   data-bs-placement="top"
-                                   title="Radarr {{ item.external_ids.get('radarr') }}">
-                                    Radarr
-                                </a>
-                            {% endif %}
-                        {% endif %}
-                    {% endif %}
-                </div>
-            </td>
-
-                    <!-- ACTIONS -->
-                    <td>
-                        <div class="d-flex flex-wrap gap-2 wanted-actions">
-
-                            {% if item.media_type == "series" %}
-                                <button class="btn btn-sm btn-imdb d-inline-flex align-items-center gap-1"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#tvdbModal{{ item.id }}">
-                                    <i class="bi bi-search"></i>
-                                    TVDB
-                                </button>
-                            {% endif %}
-
-                            {% if item.media_type == "movie" %}
-                                <button class="btn btn-sm btn-tmdb d-inline-flex align-items-center gap-1"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#tmdbModal{{ item.id }}">
-                                    <i class="bi bi-film"></i>
-                                    TMDB
-                                </button>
-                            {% endif %}
-
-                            {% if item.media_type == "movie" %}
-                                {% if tmdb_id %}
-                                    <button class="btn btn-sm btn-radarr d-inline-flex align-items-center gap-1 radarr-add-btn"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#radarrAddModal"
-                                            data-media-id="{{ item.id }}"
-                                            data-title="{{ item.title }}"
-                                            {% if in_radarr %}disabled{% endif %}>
-                                        <i class="bi bi-cloud-download"></i>
-                                        Radarr
-                                    </button>
-                                {% else %}
-                                    <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" disabled>
-                                        <i class="bi bi-cloud-download"></i>
-                                        no TMDB
-                                    </button>
-                                {% endif %}
-                            {% endif %}
-
-                            {% if item.category == "anime" %}
-                                <button class="btn btn-sm btn-anilist d-inline-flex align-items-center gap-1"
-                                        data-bs-toggle="modal"
-                                        data-bs-target="#anilistModal{{ item.id }}">
-                                    <i class="bi bi-collection-play"></i>
-                                    AniList
-                                </button>
-                            {% endif %}
-
-                        </div>
-                    </td>
-
-                    <!-- DELETE -->
-                    <td class="text-end">
-                        <button class="btn btn-sm btn-outline-danger rounded-circle d-inline-flex align-items-center justify-content-center"
-                                style="width: 34px; height: 34px;"
-                                data-bs-toggle="modal"
-                                data-bs-target="#deleteWantedModal{{ item.id }}"
-                                title="Elimina">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
-                    </td>
-
-                </tr>
-
-                <!-- ================= TVDB MODAL ================= -->
-                <div class="modal fade"
-                     id="tvdbModal{{ item.id }}"
-                     tabindex="-1"
-                     aria-hidden="true">
-                    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-                        <div class="modal-content">
-
-                            <div class="modal-header">
-                                <h5 class="modal-title">
-                            Identifica su TVDB - {{ item.title }}
-                                </h5>
-                                <button type="button" class="btn-close"
-                                        data-bs-dismiss="modal"></button>
-                            </div>
-
-                            <div class="modal-body">
-                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                    <div class="input-group input-group-sm">
-                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                        <input type="text"
-                                               class="form-control lookup-query"
-                                               data-default="{{ item.original_title or item.title }}"
-                                               value="{{ item.original_title or item.title }}">
-                                        <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
-                                    </div>
-                                </div>
-                                <div class="alert alert-info lookup-loading d-none">
-                                    Ricerca TVDB in corso...
-                                </div>
-
-                                <!-- RESULTS PLACEHOLDER -->
-                                <ul class="list-group lookup-results"
-                                    data-media-id="{{ item.id }}"
-                                    data-provider="tvdb">
-                                    <!-- risultati caricati via JS -->
-                                </ul>
-                            </div>
-
-                            <div class="modal-footer">
-                                <button class="btn btn-secondary"
-                                        data-bs-dismiss="modal">
-                                    Chiudi
-                                </button>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ================= TMDB MODAL ================= -->
-                <div class="modal fade"
-                     id="tmdbModal{{ item.id }}"
-                     tabindex="-1"
-                     aria-hidden="true">
-                    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-                        <div class="modal-content">
-
-                            <div class="modal-header">
-                                <h5 class="modal-title">
-                                    Identifica su TMDB - {{ item.title }}{% if item.year %} ({{ item.year }}){% endif %}
-                                </h5>
-                                {% set google_query = item.title ~ (" " ~ item.year if item.year else "") %}
-                                <div class="ms-auto d-flex align-items-center gap-2">
-                                    <a class="btn btn-sm btn-outline-primary"
-                                       href="https://www.google.com/search?q={{ google_query|urlencode }}"
-                                       target="_blank"
-                                       rel="noopener">
-                                        Google
-                                    </a>
-                                    <button type="button" class="btn-close"
-                                            data-bs-dismiss="modal"></button>
-                                </div>
-                            </div>
-
-                            <div class="modal-body">
-                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                    <div class="input-group input-group-sm">
-                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                        <input type="text"
-                                               class="form-control lookup-query"
-                                               data-default="{{ item.title }}"
-                                               value="{{ item.title }}">
-                                        <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
-                                    </div>
-                                </div>
-                                <div class="alert alert-info lookup-loading d-none">
-                                    Ricerca TMDB in corso...
-                                </div>
-
-                                <ul class="list-group lookup-results"
-                                    data-media-id="{{ item.id }}"
-                                    data-provider="tmdb">
-                                </ul>
-                            </div>
-
-                            <div class="modal-footer">
-                                <button class="btn btn-secondary"
-                                        data-bs-dismiss="modal">
-                                    Chiudi
-                                </button>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ================= ANILIST MODAL ================= -->
-                <div class="modal fade"
-                     id="anilistModal{{ item.id }}"
-                     tabindex="-1"
-                     aria-hidden="true">
-                    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-                        <div class="modal-content">
-
-                            <div class="modal-header">
-                                <h5 class="modal-title">
-                                    Identifica su AniList - {{ item.title }}
-                                </h5>
-                                <button type="button" class="btn-close"
-                                        data-bs-dismiss="modal"></button>
-                            </div>
-
-                            <div class="modal-body">
-                                <div class="d-flex flex-wrap gap-2 mb-3">
-                                    <div class="input-group input-group-sm">
-                                        <span class="input-group-text"><i class="bi bi-search"></i></span>
-                                        <input type="text"
-                                               class="form-control lookup-query"
-                                               data-default="{{ item.original_title or item.title }}"
-                                               value="{{ item.original_title or item.title }}">
-                                        <button class="btn btn-outline-secondary lookup-run" type="button">Cerca</button>
-                                    </div>
-                                </div>
-                                <div class="alert alert-info lookup-loading d-none">
-                                    Ricerca AniList in corso...
-                                </div>
-
-                                <ul class="list-group lookup-results"
-                                    data-media-id="{{ item.id }}"
-                                    data-provider="anilist">
-                                </ul>
-                            </div>
-
-                            <div class="modal-footer">
-                                <button class="btn btn-secondary"
-                                        data-bs-dismiss="modal">
-                                    Chiudi
-                                </button>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-
-                <!-- ================= DELETE MODAL ================= -->
-                <div class="modal fade"
-                     id="deleteWantedModal{{ item.id }}"
-                     tabindex="-1"
-                     aria-hidden="true">
-                    <div class="modal-dialog modal-dialog-centered">
-                        <div class="modal-content">
-
-                            <div class="modal-header border-0">
-                                <h5 class="modal-title">
-                                    Rimuovi dai Wanted
-                                </h5>
-                                <button type="button" class="btn-close"
-                                        data-bs-dismiss="modal"></button>
-                            </div>
-
-                            <div class="modal-body">
-                                <div class="d-flex align-items-center gap-3">
-                                    <div class="rounded-circle bg-danger-subtle text-danger d-flex align-items-center justify-content-center" style="width: 44px; height: 44px;">
-                                        <i class="bi bi-trash fs-5"></i>
-                                    </div>
-                                    <div>
-                                        <div class="fw-semibold">{{ item.title }}</div>
-                                        <div class="text-muted small">
-                                            {{ item.year }} - {{ item.media_type }}
-                                            {% if item.category %} - {{ item.category }}{% endif %}
-                                        </div>
-                                    </div>
-                                </div>
-                                <p class="mt-3 mb-0 text-muted">
-                                    Questa azione elimina il media dai wanted e dai dati associati.
-                                </p>
-                            </div>
-
-                            <div class="modal-footer border-0">
-                                <button class="btn btn-light"
-                                        data-bs-dismiss="modal">
-                                    Annulla
-                                </button>
-                                <button type="button"
-                                        class="btn btn-danger d-inline-flex align-items-center gap-1 delete-single-btn"
-                                        data-media-id="{{ item.id }}">
-                                    <i class="bi bi-trash"></i>
-                                    Elimina
-                                </button>
-                            </div>
-
-                        </div>
-                    </div>
-                </div>
-
-            {% endfor %}
-            </tbody>
-</table>
-
-        <!-- ================= RADARR SINGLE ADD MODAL ================= -->
-        <div class="modal fade"
-             id="radarrAddModal"
-             tabindex="-1"
-             aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title">Invia a Radarr</h5>
-                        <button type="button" class="btn-close"
-                                data-bs-dismiss="modal"></button>
-                    </div>
-
-                    <div class="modal-body">
-                        <div class="mb-2 text-muted" id="radarr-add-title">Seleziona root e profilo qualità.</div>
-                        <input type="hidden" id="radarr-add-media-id" value="">
-                        <input type="hidden" id="radarr-default-root" value="{{ radarr_defaults.root_folder or '' }}">
-                        <input type="hidden" id="radarr-default-profile" value="{{ radarr_defaults.profile_id or '' }}">
-                        <input type="hidden" id="radarr-default-search" value="{{ '1' if radarr_defaults.enable_search else '0' }}">
-                        <div class="mb-3">
-                            <label class="form-label">Root folder</label>
-                            <select class="form-select form-select-sm" id="radarr-root-select">
-                                <option value="">Caricamento...</option>
-                            </select>
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label">Quality profile</label>
-                            <select class="form-select form-select-sm" id="radarr-profile-select">
-                                <option value="">Caricamento...</option>
-                            </select>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" id="radarr-search-enable">
-                            <label class="form-check-label" for="radarr-search-enable">Avvia ricerca su Radarr</label>
-                        </div>
-                        <div class="alert alert-info d-none" id="radarr-add-status">Invio a Radarr in corso...</div>
-                        <div class="alert alert-danger d-none" id="radarr-add-error">Errore durante il caricamento.</div>
-                    </div>
-
-                    <div class="modal-footer border-0">
-                        <button class="btn btn-light"
-                                data-bs-dismiss="modal">
-                            Annulla
-                        </button>
-                        <button type="button"
-                                class="btn btn-primary d-inline-flex align-items-center gap-1"
-                                id="radarr-add-confirm">
-                            <i class="bi bi-cloud-download"></i>
-                            Invia
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-
-        <!-- ================= RADARR BULK ADD MODAL ================= -->
-        <div class="modal fade"
-             id="bulkRadarrModal"
-             tabindex="-1"
-             aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title">Invia selezionati a Radarr</h5>
-                        <button type="button" class="btn-close"
-                                data-bs-dismiss="modal"></button>
-                    </div>
-
-                    <div class="modal-body">
-                        <p class="mb-2">
-                            Selezionati: <strong id="bulk-radarr-count">0</strong>
-                        </p>
-                        <p class="text-muted small mb-2" id="bulk-radarr-note">
-                            Solo movie con TMDB non presenti in Radarr.
-                        </p>
-                        <div class="mb-3">
-                            <label class="form-label">Root folder</label>
-                            <select class="form-select form-select-sm" id="bulk-radarr-root">
-                                <option value="">Caricamento...</option>
-                            </select>
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label">Quality profile</label>
-                            <select class="form-select form-select-sm" id="bulk-radarr-profile">
-                                <option value="">Caricamento...</option>
-                            </select>
-                        </div>
-                        <div class="form-check form-switch mb-2">
-                            <input class="form-check-input" type="checkbox" id="bulk-radarr-search-enable">
-                            <label class="form-check-label" for="bulk-radarr-search-enable">Avvia ricerca su Radarr</label>
-                        </div>
-                        <div class="alert alert-info d-none" id="bulk-radarr-status">Invio a Radarr in corso...</div>
-                        <div class="alert alert-danger d-none" id="bulk-radarr-error">Errore durante il caricamento.</div>
-                    </div>
-
-                    <div class="modal-footer border-0">
-                        <button class="btn btn-light"
-                                data-bs-dismiss="modal">
-                            Annulla
-                        </button>
-                        <button type="button"
-                                class="btn btn-primary d-inline-flex align-items-center gap-1"
-                                id="bulk-radarr-confirm">
-                            <i class="bi bi-cloud-download"></i>
-                            Invia
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-
-        <!-- ================= MERGE WANTED MODAL ================= -->
-        <div class="modal fade"
-             id="mergeWantedModal"
-             tabindex="-1"
-             aria-hidden="true">
-            <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
-                <div class="modal-content">
-
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title">Merge Wanted selezionati</h5>
-                        <button type="button" class="btn-close"
-                                data-bs-dismiss="modal"></button>
-                    </div>
-
-                    <div class="modal-body">
-                        <div class="alert alert-info" id="merge-preview-status">
-                            Caricamento anteprima merge...
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="fw-semibold mb-1">Gruppi mergiabili</div>
-                            <div id="merge-preview-groups" class="small text-muted">Nessun gruppo.</div>
-                        </div>
-
-                        <div class="mb-3">
-                            <div class="fw-semibold mb-1">Non matchano</div>
-                            <div id="merge-preview-singletons" class="small text-muted">Nessun elemento.</div>
-                        </div>
-
-                        <div>
-                            <div class="fw-semibold mb-1">Esclusi</div>
-                            <div id="merge-preview-excluded" class="small text-muted">Nessun elemento.</div>
-                        </div>
-                    </div>
-
-                    <div class="modal-footer border-0">
-                        <div class="me-auto small text-muted" id="merge-preview-summary"></div>
-                        <button class="btn btn-light"
-                                data-bs-dismiss="modal">
-                            Annulla
-                        </button>
-                        <button type="button"
-                                class="btn btn-primary d-inline-flex align-items-center gap-1"
-                                id="merge-confirm-btn">
-                            <i class="bi bi-check2-circle"></i>
-                            Esegui merge
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-
-        <!-- ================= BULK DELETE MODAL ================= -->
-        <div class="modal fade"
-             id="bulkDeleteModal"
-             tabindex="-1"
-             aria-hidden="true">
-            <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
-
-                    <div class="modal-header border-0">
-                        <h5 class="modal-title">
-                            Rimuovi elementi selezionati
-                        </h5>
-                        <button type="button" class="btn-close"
-                                data-bs-dismiss="modal"></button>
-                    </div>
-
-                    <div class="modal-body">
-                        <p class="mb-1">
-                            Stai per eliminare <strong id="bulk-delete-count">0</strong> elementi.
-                        </p>
-                        <p class="text-muted mb-0">
-                            Questa azione rimuove i media dai wanted e dai dati associati.
-                        </p>
-                    </div>
-
-                    <div class="modal-footer border-0">
-                        <button class="btn btn-light"
-                                data-bs-dismiss="modal">
-                            Annulla
-                        </button>
-                        <button type="button"
-                                class="btn btn-danger d-inline-flex align-items-center gap-1"
-                                id="bulk-delete-confirm">
-                            <i class="bi bi-trash"></i>
-                            Elimina
-                        </button>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-    </div>
+<div id="wanted-skeleton" class="wanted-skeleton">
+    <div class="wanted-skeleton__row"></div>
+    <div class="wanted-skeleton__row"></div>
+    <div class="wanted-skeleton__row"></div>
+    <div class="wanted-skeleton__row"></div>
+    <div class="wanted-skeleton__row"></div>
 </div>
-
+<div id="wanted-content" class="d-none"></div>
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
 
 <script>
-$(document).ready(function() {
+function initWantedUI() {
     var wantedSearchTerm = '';
     var wantedTypeFilter = 'all';
     var selectedIds = new Set();
@@ -747,7 +136,7 @@ $(document).ready(function() {
         lengthMenu: [25, 50, 100, 200],
         columnDefs: [
             { orderable: false, targets: [0, 5, 6] },
-            { searchable: false, targets: [0, 3, 4, 5, 6] }
+            { searchable: false, targets: [0, 4, 5, 6] }
         ],
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
@@ -1468,6 +857,40 @@ $(document).ready(function() {
     table.on('draw', function() {
         syncSelectionToTable();
     });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    var container = document.getElementById('wanted-content');
+    var skeleton = document.getElementById('wanted-skeleton');
+    fetch('/api/wanted/content')
+        .then(function(resp) { return resp.text(); })
+        .then(function(html) {
+            if (container) {
+                container.innerHTML = html;
+                container.classList.remove('d-none');
+            }
+            if (skeleton) {
+                skeleton.style.display = 'none';
+            }
+            var stats = document.getElementById('wanted-stats-data');
+            if (stats) {
+                $('#wanted-count-total').text(stats.dataset.total || '0');
+                $('#wanted-count-movies').text(stats.dataset.movies || '0');
+                $('#wanted-count-series').text(stats.dataset.series || '0');
+                $('#wanted-count-missing').text(stats.dataset.missing || '0');
+                $('#wanted-count-in-radarr').text(stats.dataset.inRadarr || '0');
+            }
+            $('#wanted-title-search').prop('disabled', false);
+            $('#wanted-type-filter').prop('disabled', false);
+            $('#select-visible-btn').prop('disabled', false);
+            $('#clear-selection-btn').prop('disabled', false);
+            initWantedUI();
+        })
+        .catch(function() {
+            if (skeleton) {
+                skeleton.style.display = 'none';
+            }
+        });
 });
 </script>
 

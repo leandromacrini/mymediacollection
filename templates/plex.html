@@ -13,7 +13,7 @@
         text-overflow: ellipsis;
     }
     #plex_table th:nth-child(1),
-    #plex_table td:nth-child(1) { width: 46%; }
+    #plex_table td:nth-child(1) { width: 40%; }
     #plex_table th:nth-child(2),
     #plex_table td:nth-child(2) { width: 8%; }
     #plex_table th:nth-child(3),
@@ -26,6 +26,8 @@
     #plex_table td:nth-child(6) { width: 6%; text-align: center; }
     #plex_table th:nth-child(7),
     #plex_table td:nth-child(7) { width: 6%; text-align: center; }
+    #plex_table th:nth-child(8),
+    #plex_table td:nth-child(8) { width: 6%; text-align: center; }
     .plex-skeleton {
         display: grid;
         gap: 10px;
@@ -100,6 +102,7 @@
             <th>Type</th>
             <th>Library</th>
             <th class="text-center">Radarr</th>
+            <th class="text-center">Sonarr</th>
             <th class="text-center">Wanted</th>
             <th class="text-center">Actions</th>
         </tr>
@@ -191,6 +194,18 @@ $(document).ready(function() {
                 }
             },
             {
+                data: 'in_sonarr',
+                orderable: true,
+                render: function(data, type) {
+                    if (type === 'sort' || type === 'type') {
+                        return data ? 1 : 0;
+                    }
+                    return data
+                        ? '<i class="bi bi-check-circle-fill text-success"></i>'
+                        : '<i class="bi bi-dash-circle text-muted"></i>';
+                }
+            },
+            {
                 data: 'in_wanted',
                 orderable: true,
                 render: function(data, type) {
@@ -210,13 +225,15 @@ $(document).ready(function() {
                 }
             }
         ],
-        initComplete: function() {
-            var skeleton = document.getElementById('plex-skeleton');
-            if (skeleton) {
-                skeleton.style.display = 'none';
-            }
-            document.getElementById('plex_table').classList.remove('d-none');
+        initComplete: function() {}
+    });
+
+    plexTable.on('xhr', function() {
+        var skeleton = document.getElementById('plex-skeleton');
+        if (skeleton) {
+            skeleton.style.display = 'none';
         }
+        document.getElementById('plex_table').classList.remove('d-none');
     });
 
     function populateSelect($select, values) {

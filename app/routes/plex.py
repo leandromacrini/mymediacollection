@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, render_template
 
-from api import plex_web_api, radarr_api
+from api import plex_web_api, radarr_api, sonarr_api
 from app.extensions import db
 
 bp = Blueprint("plex", __name__)
@@ -26,6 +26,10 @@ def plex_media_list():
     radarr_tmdb = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id}
     radarr_titles = {((m.title or "").strip().lower(), m.year) for m in radarr_movies if m.title}
 
+    sonarr_series = sonarr_api.sonarr_get_all_series(db)
+    sonarr_tvdb = {str(s.tvdb_id) for s in sonarr_series if s.tvdb_id}
+    sonarr_titles = {((s.title or "").strip().lower(), s.year) for s in sonarr_series if s.title}
+
     wanted_items = db.get_wanted_items(limit=1000000)
     wanted_tmdb = set()
     wanted_titles = set()
@@ -45,6 +49,12 @@ def plex_media_list():
         elif ((m.title or "").strip().lower(), m.year) in radarr_titles:
             in_radarr = True
 
+        in_sonarr = False
+        if m.tvdb_id and m.tvdb_id in sonarr_tvdb:
+            in_sonarr = True
+        elif ((m.title or "").strip().lower(), m.year) in sonarr_titles:
+            in_sonarr = True
+
         in_wanted = False
         if m.tmdb_id and m.tmdb_id in wanted_tmdb:
             in_wanted = True
@@ -63,6 +73,7 @@ def plex_media_list():
             "library": m.library,
             "rating_key": m.rating_key,
             "in_radarr": in_radarr,
+            "in_sonarr": in_sonarr,
             "in_wanted": in_wanted
         })
 

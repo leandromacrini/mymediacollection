@@ -40,16 +40,18 @@ class PlexMedia:
     rating_key: str
     tmdb_id: str | None = None
     imdb_id: str | None = None
+    tvdb_id: str | None = None
 
 
-def _extract_ids(meta: dict) -> tuple[str | None, str | None]:
+def _extract_ids(meta: dict) -> tuple[str | None, str | None, str | None]:
     tmdb_id = None
     imdb_id = None
+    tvdb_id = None
     guid_field = meta.get("guid") or ""
     guid_list = meta.get("Guid") or []
 
     def _scan(value: str):
-        nonlocal tmdb_id, imdb_id
+        nonlocal tmdb_id, imdb_id, tvdb_id
         if not value:
             return
         tmdb_match = re.search(r"(?:themoviedb|tmdb)://(\\d+)", value)
@@ -58,12 +60,15 @@ def _extract_ids(meta: dict) -> tuple[str | None, str | None]:
         imdb_match = re.search(r"imdb://(tt\\d+)", value)
         if imdb_match:
             imdb_id = imdb_match.group(1)
+        tvdb_match = re.search(r"tvdb://(\\d+)", value)
+        if tvdb_match:
+            tvdb_id = tvdb_match.group(1)
 
     _scan(str(guid_field))
     for g in guid_list:
         _scan(str(g.get("id") or ""))
 
-    return tmdb_id, imdb_id
+    return tmdb_id, imdb_id, tvdb_id
 
 
 def plex_get_media_items(db: db_core.MediaDB | None = None) -> list[PlexMedia]:
@@ -89,7 +94,7 @@ def plex_get_media_items(db: db_core.MediaDB | None = None) -> list[PlexMedia]:
             rating_key = m.get("ratingKey")
             if not rating_key:
                 continue
-            tmdb_id, imdb_id = _extract_ids(m)
+            tmdb_id, imdb_id, tvdb_id = _extract_ids(m)
             items.append(PlexMedia(
                 title=m.get("title") or "",
                 year=m.get("year"),
@@ -97,7 +102,8 @@ def plex_get_media_items(db: db_core.MediaDB | None = None) -> list[PlexMedia]:
                 library=section_title,
                 rating_key=str(rating_key),
                 tmdb_id=tmdb_id,
-                imdb_id=imdb_id
+                imdb_id=imdb_id,
+                tvdb_id=tvdb_id
             ))
     return items
 
