@@ -22,8 +22,26 @@
     #plex_table td:nth-child(4) { width: 20%; }
     #plex_table th:nth-child(5),
     #plex_table td:nth-child(5) { width: 16%; }
+    #plexDetailModal .modal-content {
+        position: relative;
+        overflow: hidden;
+    }
+    #plexDetailModal .plex-detail-backdrop-bg {
+        position: absolute;
+        inset: 0;
+        background-size: cover;
+        background-position: center;
+        opacity: 0.12;
+        pointer-events: none;
+    }
+    #plexDetailModal .modal-header,
+    #plexDetailModal .modal-body,
+    #plexDetailModal .modal-footer {
+        position: relative;
+        z-index: 1;
+    }
 </style>
-<h2>Plex Library</h2>
+<h2><i class="bi bi-collection-play me-2"></i>Plex Library</h2>
 {% set stats = namespace(total=0, movies=0, series=0) %}
 {% for m in items %}
     {% set stats.total = stats.total + 1 %}
@@ -67,6 +85,7 @@
 <div class="modal fade" id="plexDetailModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
         <div class="modal-content">
+            <div class="plex-detail-backdrop-bg d-none" id="plex-detail-backdrop-bg"></div>
             <div class="modal-header">
                 <h5 class="modal-title" id="plex-detail-title">Dettagli Plex</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -75,7 +94,13 @@
                 <div class="alert alert-info d-none" id="plex-detail-loading">Carico dettagli...</div>
                 <div class="alert alert-danger d-none" id="plex-detail-error">Errore nel caricamento.</div>
                 <div id="plex-detail-body" class="d-none">
-                    <p class="text-muted" id="plex-detail-summary"></p>
+                    <div class="d-flex gap-3 mb-3 align-items-start">
+                        <img id="plex-detail-poster" class="rounded shadow-sm d-none" alt="Plex Poster" style="width: 180px; height: auto;">
+                        <div class="flex-grow-1">
+                            <div class="fw-semibold mb-1">Trama:</div>
+                            <p class="plex-detail-summary mb-0" id="plex-detail-summary"></p>
+                        </div>
+                    </div>
                     <div class="row g-2">
                         <div class="col-12 col-md-6"><strong>Anno:</strong> <span id="plex-detail-year"></span></div>
                         <div class="col-12 col-md-6"><strong>Tipo:</strong> <span id="plex-detail-type"></span></div>
@@ -131,6 +156,16 @@ $(document).ready(function() {
     function fillDetails(details) {
         $('#plex-detail-title').text(details.title || 'Dettagli Plex');
         $('#plex-detail-summary').text(details.summary || '');
+        if (details.poster_url) {
+            $('#plex-detail-poster').attr('src', details.poster_url).removeClass('d-none');
+        } else {
+            $('#plex-detail-poster').addClass('d-none').attr('src', '');
+        }
+        if (details.backdrop_url) {
+            $('#plex-detail-backdrop-bg').css('background-image', 'url(' + details.backdrop_url + ')').removeClass('d-none');
+        } else {
+            $('#plex-detail-backdrop-bg').addClass('d-none').css('background-image', '');
+        }
         $('#plex-detail-year').text(details.year || '');
         $('#plex-detail-type').text(details.type || '');
         $('#plex-detail-studio').text(details.studio || '');

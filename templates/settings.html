@@ -2,13 +2,33 @@
 {% block content %}
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
   <div>
-    <h2 class="mb-0">Impostazioni Servizi</h2>
+    <h2 class="mb-0"><i class="bi bi-gear me-2"></i>Impostazioni Servizi</h2>
     <small class="text-muted">Gestisci URL, chiavi e opzioni di integrazione.</small>
   </div>
 </div>
 
+<style>
+  .service-card {
+    border-radius: 14px;
+    background: #ffffff;
+  }
+  .service-card.alt {
+    background: #f6f7fb;
+  }
+  .service-card .card-header {
+    padding: 0.65rem 0.9rem;
+  }
+  .service-card .card-body {
+    padding: 0.75rem 0.9rem 0.9rem;
+  }
+  .service-card .form-label {
+    font-size: 0.85rem;
+    margin-bottom: 0.25rem;
+  }
+</style>
+
 {% for service in services %}
-  <div class="card mb-3 border-0 shadow-sm">
+  <div class="card mb-2 border-0 shadow-sm service-card {% if loop.index0 % 2 == 1 %}alt{% endif %}">
     <div class="card-header bg-white">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div>
@@ -21,7 +41,7 @@
       </div>
     </div>
     <div class="card-body">
-      <form method="post" class="row g-3">
+      <form method="post" class="row g-2">
         <input type="hidden" name="service_id" value="{{ service.id }}">
         {% for setting in service.settings %}
           {% set key_lower = setting.key|lower %}
@@ -33,7 +53,7 @@
               <small class="text-muted">{{ setting.key }}</small>
             </label>
             {% if setting.key == 'radarr_root_folder' %}
-              <select class="form-select" name="setting_{{ setting.key }}">
+              <select class="form-select form-select-sm" name="setting_{{ setting.key }}">
                 {% if radarr_options.root_folders %}
                   <option value="">Seleziona una cartella</option>
                   {% for opt in radarr_options.root_folders %}
@@ -45,7 +65,7 @@
                 {% endif %}
               </select>
             {% elif setting.key == 'radarr_profile_id' %}
-              <select class="form-select" name="setting_{{ setting.key }}">
+              <select class="form-select form-select-sm" name="setting_{{ setting.key }}">
                 {% if radarr_options.profiles %}
                   <option value="">Seleziona un profilo</option>
                   {% for opt in radarr_options.profiles %}
@@ -57,7 +77,7 @@
                 {% endif %}
               </select>
             {% elif setting.key == 'sonarr_root_folder' %}
-              <select class="form-select" name="setting_{{ setting.key }}">
+              <select class="form-select form-select-sm" name="setting_{{ setting.key }}">
                 {% if sonarr_options.root_folders %}
                   <option value="">Seleziona una cartella</option>
                   {% for opt in sonarr_options.root_folders %}
@@ -69,7 +89,7 @@
                 {% endif %}
               </select>
             {% elif setting.key == 'sonarr_profile_id' %}
-              <select class="form-select" name="setting_{{ setting.key }}">
+              <select class="form-select form-select-sm" name="setting_{{ setting.key }}">
                 {% if sonarr_options.profiles %}
                   <option value="">Seleziona un profilo</option>
                   {% for opt in sonarr_options.profiles %}
@@ -81,25 +101,59 @@
                 {% endif %}
               </select>
             {% elif setting.value_type in ['boolean', 'bool'] %}
-              <select class="form-select" name="setting_{{ setting.key }}">
+              <select class="form-select form-select-sm" name="setting_{{ setting.key }}">
                 <option value="true" {% if setting_value|string == 'true' %}selected{% endif %}>True</option>
                 <option value="false" {% if setting_value|string == 'false' %}selected{% endif %}>False</option>
               </select>
             {% elif setting.value_type == 'password' %}
-              <input type="password" class="form-control" name="setting_{{ setting.key }}" value="{{ setting_value }}">
+              <input type="password" class="form-control form-control-sm" name="setting_{{ setting.key }}" value="{{ setting_value }}">
             {% elif setting.value_type in ['int', 'integer'] %}
-              <input type="number" class="form-control" name="setting_{{ setting.key }}" value="{{ setting_value }}">
+              <input type="number" class="form-control form-control-sm" name="setting_{{ setting.key }}" value="{{ setting_value }}">
             {% else %}
-              <input type="text" class="form-control" name="setting_{{ setting.key }}" value="{{ setting_value }}">
+              <input type="text" class="form-control form-control-sm" name="setting_{{ setting.key }}" value="{{ setting_value }}">
             {% endif %}
           </div>
         {% endfor %}
         <div class="col-12 d-flex flex-wrap gap-2">
-          <button type="submit" name="action" value="save" class="btn btn-primary">Save</button>
-          <button type="submit" name="action" value="test" class="btn btn-secondary">Test</button>
+          <button type="submit" name="action" value="save" class="btn btn-sm btn-primary">Save</button>
+          <button type="submit" name="action" value="test" class="btn btn-sm btn-secondary">Test</button>
         </div>
       </form>
     </div>
   </div>
 {% endfor %}
+<script>
+  document.querySelectorAll('form').forEach(function(form) {
+    form.addEventListener('submit', function(event) {
+      var submitter = event.submitter;
+      if (!submitter || submitter.value !== 'test') {
+        return;
+      }
+      event.preventDefault();
+      submitter.disabled = true;
+      var originalText = submitter.textContent;
+      submitter.textContent = 'Test...';
+      var formData = new FormData(form);
+      formData.set('action', 'test');
+      fetch(form.getAttribute('action') || window.location.pathname, {
+        method: 'POST',
+        headers: { 'X-Requested-With': 'XMLHttpRequest' },
+        body: formData
+      }).then(function(resp) {
+        return resp.json();
+      }).then(function(data) {
+        if (window.showToast) {
+          showToast(data.message || 'Test completato.', data.category || (data.ok ? 'success' : 'danger'));
+        }
+      }).catch(function() {
+        if (window.showToast) {
+          showToast('Errore durante il test.', 'danger');
+        }
+      }).finally(function() {
+        submitter.disabled = false;
+        submitter.textContent = originalText;
+      });
+    });
+  });
+</script>
 {% endblock %}

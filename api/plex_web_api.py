@@ -1,4 +1,5 @@
 import requests
+from urllib.parse import quote
 from dataclasses import dataclass
 from core import db_core
 
@@ -82,6 +83,19 @@ def plex_get_media_details(rating_key: str, db: db_core.MediaDB | None = None) -
         return None
     item = meta[0]
     genres = [g.get("tag") for g in item.get("Genre", []) if g.get("tag")]
+    cfg = _get_config(db)
+    thumb = item.get("thumb")
+    art = item.get("art")
+    def _image_url(path: str | None) -> str | None:
+        if not path or not cfg["url"] or not cfg["token"]:
+            return None
+        if path.startswith("http://") or path.startswith("https://"):
+            base = path
+        else:
+            base = f"{cfg['url']}{path}"
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}X-Plex-Token={cfg['token']}"
+
     return {
         "title": item.get("title"),
         "original_title": item.get("originalTitle"),
@@ -97,5 +111,9 @@ def plex_get_media_details(rating_key: str, db: db_core.MediaDB | None = None) -
         "audience_rating": item.get("audienceRating"),
         "view_count": item.get("viewCount"),
         "last_viewed_at": item.get("lastViewedAt"),
-        "genres": genres
+        "genres": genres,
+        "thumb": thumb,
+        "art": art,
+        "poster_url": _image_url(thumb),
+        "backdrop_url": _image_url(art)
     }

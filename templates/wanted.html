@@ -33,7 +33,7 @@
     .badge-radarr { background: #f6a000; color: #2b1a00; }
 </style>
 
-<h2>Wanted Media</h2>
+<h2><i class="bi bi-star me-2"></i>Wanted Media</h2>
 {% set stats = namespace(total=0, movies=0, series=0, missing=0, in_radarr=0) %}
 {% for item in items %}
     {% set stats.total = stats.total + 1 %}
