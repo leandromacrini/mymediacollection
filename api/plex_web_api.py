@@ -1,5 +1,6 @@
 import requests
 from urllib.parse import quote
+import re
 from dataclasses import dataclass
 from core import db_core
 
@@ -37,6 +38,32 @@ class PlexMedia:
     media_type: str
     library: str
     rating_key: str
+    tmdb_id: str | None = None
+    imdb_id: str | None = None
+
+
+def _extract_ids(meta: dict) -> tuple[str | None, str | None]:
+    tmdb_id = None
+    imdb_id = None
+    guid_field = meta.get("guid") or ""
+    guid_list = meta.get("Guid") or []
+
+    def _scan(value: str):
+        nonlocal tmdb_id, imdb_id
+        if not value:
+            return
+        tmdb_match = re.search(r"(?:themoviedb|tmdb)://(\\d+)", value)
+        if tmdb_match:
+            tmdb_id = tmdb_match.group(1)
+        imdb_match = re.search(r"imdb://(tt\\d+)", value)
+        if imdb_match:
+            imdb_id = imdb_match.group(1)
+
+    _scan(str(guid_field))
+    for g in guid_list:
+        _scan(str(g.get("id") or ""))
+
+    return tmdb_id, imdb_id
 
 
 def plex_get_media_items(db: db_core.MediaDB | None = None) -> list[PlexMedia]:
@@ -62,12 +89,15 @@ def plex_get_media_items(db: db_core.MediaDB | None = None) -> list[PlexMedia]:
             rating_key = m.get("ratingKey")
             if not rating_key:
                 continue
+            tmdb_id, imdb_id = _extract_ids(m)
             items.append(PlexMedia(
                 title=m.get("title") or "",
                 year=m.get("year"),
                 media_type=m.get("type") or section_type,
                 library=section_title,
-                rating_key=str(rating_key)
+                rating_key=str(rating_key),
+                tmdb_id=tmdb_id,
+                imdb_id=imdb_id
             ))
     return items
 
