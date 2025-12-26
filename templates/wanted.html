@@ -350,8 +350,17 @@
                                 <h5 class="modal-title">
                                     Identifica su TMDB - {{ item.title }}{% if item.year %} ({{ item.year }}){% endif %}
                                 </h5>
-                                <button type="button" class="btn-close"
-                                        data-bs-dismiss="modal"></button>
+                                {% set google_query = item.title ~ (" " ~ item.year if item.year else "") %}
+                                <div class="ms-auto d-flex align-items-center gap-2">
+                                    <a class="btn btn-sm btn-outline-primary"
+                                       href="https://www.google.com/search?q={{ google_query|urlencode }}"
+                                       target="_blank"
+                                       rel="noopener">
+                                        Google
+                                    </a>
+                                    <button type="button" class="btn-close"
+                                            data-bs-dismiss="modal"></button>
+                                </div>
                             </div>
 
                             <div class="modal-body">
@@ -475,8 +484,7 @@
                                 </button>
                                 <button type="button"
                                         class="btn btn-danger d-inline-flex align-items-center gap-1 delete-single-btn"
-                                        data-media-id="{{ item.id }}"
-                                        data-url="{{ url_for('wanted.wanted_delete', media_item_id=item.id) }}">
+                                        data-media-id="{{ item.id }}">
                                     <i class="bi bi-trash"></i>
                                     Elimina
                                 </button>
@@ -729,6 +737,10 @@ $(document).ready(function() {
         searching: true,
         order: [],
         autoWidth: false,
+        deferRender: true,
+        processing: true,
+        orderClasses: false,
+        searchDelay: 150,
         pageLength: 50,
         lengthMenu: [25, 50, 100, 200],
         columnDefs: [
@@ -738,25 +750,28 @@ $(document).ready(function() {
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
 
-    function cacheRowInfo() {
-        rowInfo = {};
-        table.rows().nodes().to$().each(function() {
-            var $row = $(this);
-            var id = $row.find('.wanted-select').val();
-            if (!id) {
-                return;
-            }
-            rowInfo[id] = {
-                id: id,
-                mediaType: $row.data('media-type'),
-                category: $row.data('category') || '',
-                hasTmdb: $row.data('has-tmdb') === 1 || $row.data('has-tmdb') === '1',
-                tmdbId: $row.data('tmdb-id') || '',
-                inRadarr: $row.data('in-radarr') === 1 || $row.data('in-radarr') === '1',
-                missingExternal: $row.data('missing-external') === 1 || $row.data('missing-external') === '1',
-                title: $row.find('.wanted-title').text().trim()
-            };
-        });
+    function getRowInfo(id) {
+        if (!id) {
+            return null;
+        }
+        if (rowInfo[id]) {
+            return rowInfo[id];
+        }
+        var $row = $('.wanted-select[value="' + id + '"]').closest('tr');
+        if (!$row.length) {
+            return null;
+        }
+        rowInfo[id] = {
+            id: id,
+            mediaType: $row.data('media-type'),
+            category: $row.data('category') || '',
+            hasTmdb: $row.data('has-tmdb') === 1 || $row.data('has-tmdb') === '1',
+            tmdbId: $row.data('tmdb-id') || '',
+            inRadarr: $row.data('in-radarr') === 1 || $row.data('in-radarr') === '1',
+            missingExternal: $row.data('missing-external') === 1 || $row.data('missing-external') === '1',
+            title: $row.find('.wanted-title').text().trim()
+        };
+        return rowInfo[id];
     }
 
     function updateRowInRadarr(mediaId) {
@@ -773,10 +788,12 @@ $(document).ready(function() {
             );
         }
         $row.find('.radarr-add-btn').prop('disabled', true);
-        cacheRowInfo();
+        var info = getRowInfo(mediaId);
+        if (info) {
+            info.inRadarr = true;
+        }
         table.draw(false);
         updateBulkState();
-        initTooltips();
     }
 
     function removeRowsByIds(ids) {
@@ -788,7 +805,7 @@ $(document).ready(function() {
             selectedIds.delete(id);
         });
         table.draw(false);
-        cacheRowInfo();
+        delete rowInfo[id];
         syncSelectionToTable();
         updateBulkState();
     }
@@ -801,16 +818,9 @@ $(document).ready(function() {
     }
 
 
-    function initTooltips() {
-        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-        tooltipTriggerList.forEach(function (tooltipTriggerEl) {
-            new bootstrap.Tooltip(tooltipTriggerEl);
-        });
-    }
-
     function getRadarrEligibleIds() {
         return Array.from(selectedIds).filter(function(id) {
-            return isRadarrEligibleInfo(rowInfo[id]);
+            return isRadarrEligibleInfo(getRowInfo(id));
         });
     }
 
@@ -1047,10 +1057,14 @@ $(document).ready(function() {
                 );
             }
         }
-        cacheRowInfo();
+        var info = getRowInfo(mediaId);
+        if (info) {
+            info.hasTmdb = source === 'tmdb' ? true : info.hasTmdb;
+            info.tmdbId = source === 'tmdb' ? externalId : info.tmdbId;
+            info.missingExternal = false;
+        }
         table.draw(false);
         updateBulkState();
-        initTooltips();
     }
 
     $(document).on('click', '.select-external-btn', function() {
@@ -1080,27 +1094,32 @@ $(document).ready(function() {
         });
     });
 
-    $(document).on('click', '.delete-single-btn', function() {
+    $(document).on('click', '.delete-single-btn', function(event) {
+        event.preventDefault();
         var button = $(this);
         var mediaId = button.data('media-id');
-        var url = button.data('url');
-        if (!mediaId || !url) {
+        if (!mediaId) {
             return;
         }
+        var url = '/wanted/' + mediaId + '/delete';
         button.prop('disabled', true).text('Elimino...');
         $.ajax({
             url: url,
-            method: 'POST'
+            method: 'POST',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
         }).done(function() {
             removeRowsByIds([String(mediaId)]);
+            button.text('Eliminato');
             var modalEl = button.closest('.modal')[0];
             if (modalEl) {
-                var modal = bootstrap.Modal.getInstance(modalEl);
-                if (modal) {
-                    modal.hide();
-                }
+                setTimeout(function() {
+                    var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }, 1000);
             }
-        }).always(function() {
+        }).fail(function() {
             button.prop('disabled', false).text('Elimina');
         });
     });
@@ -1173,6 +1192,12 @@ $(document).ready(function() {
             $('#radarr-add-error')
         );
     });
+    $('#radarrAddModal').on('hidden.bs.modal', function() {
+        $('#radarr-add-error').addClass('d-none').text('Errore durante il caricamento.');
+        $('#radarr-add-status').addClass('d-none').text('Invio a Radarr in corso...');
+        $('#radarr-add-confirm').prop('disabled', false).text('Invia');
+        applyRadarrDefaults($('#radarr-root-select'), $('#radarr-profile-select'));
+    });
 
     $('#bulkRadarrModal').on('show.bs.modal', function() {
         loadRadarrOptions(
@@ -1180,6 +1205,12 @@ $(document).ready(function() {
             $('#bulk-radarr-profile'),
             $('#bulk-radarr-error')
         );
+    });
+    $('#bulkRadarrModal').on('hidden.bs.modal', function() {
+        $('#bulk-radarr-error').addClass('d-none').text('Errore durante il caricamento.');
+        $('#bulk-radarr-status').addClass('d-none').text('Invio a Radarr in corso...');
+        $('#bulk-radarr-confirm').prop('disabled', false).text('Invia');
+        applyRadarrDefaults($('#bulk-radarr-root'), $('#bulk-radarr-profile'));
     });
 
     $('#radarr-add-confirm').on('click', function() {
@@ -1406,15 +1437,12 @@ $(document).ready(function() {
         });
     });
 
-    cacheRowInfo();
     applyFilters();
     syncSelectionToTable();
 
     table.on('draw', function() {
-        initTooltips();
         syncSelectionToTable();
     });
-    initTooltips();
 });
 </script>
 

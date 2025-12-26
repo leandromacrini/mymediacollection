@@ -25,7 +25,12 @@
     #radarr_table th:nth-child(6),
     #radarr_table td:nth-child(6) { width: 10%; }
 </style>
-<h2>Radarr Movies</h2>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+    <h2 class="mb-0">Radarr Movies</h2>
+    <button class="btn btn-sm btn-outline-primary ms-auto" type="button" id="radarr-sync-btn" data-bs-toggle="modal" data-bs-target="#radarrSyncModal">
+        Sync to Wanted
+    </button>
+</div>
 {% set stats = namespace(total=0, monitored=0, downloaded=0) %}
 {% for m in movies %}
     {% set stats.total = stats.total + 1 %}
@@ -67,6 +72,50 @@
     </tbody>
 </table>
 
+<div class="modal fade" id="radarrSyncModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Sync Radarr → Wanted</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info d-none" id="radarr-sync-loading">Caricamento dati Radarr...</div>
+                <div class="alert alert-danger d-none" id="radarr-sync-error">Errore durante il sync.</div>
+                <div id="radarr-sync-summary" class="mb-3 d-none">
+                    <span class="badge bg-primary">Totali: <span id="radarr-sync-total">0</span></span>
+                    <span class="badge bg-success">Gia in Wanted: <span id="radarr-sync-present">0</span></span>
+                    <span class="badge bg-warning text-dark">Da importare: <span id="radarr-sync-missing">0</span></span>
+                </div>
+                <div id="radarr-sync-list" class="d-none">
+                    <div class="d-flex align-items-center gap-2 mb-2">
+                        <button class="btn btn-sm btn-outline-secondary" type="button" id="radarr-sync-select-all">Seleziona tutti</button>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" id="radarr-sync-clear">Deseleziona</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped align-middle">
+                            <thead>
+                                <tr>
+                                    <th style="width: 36px;"></th>
+                                    <th>Title</th>
+                                    <th>Year</th>
+                                    <th>TMDb</th>
+                                    <th>Match</th>
+                                </tr>
+                            </thead>
+                            <tbody id="radarr-sync-rows"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                <button class="btn btn-primary" id="radarr-sync-import" disabled>Importa selezionati</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- DataTables JS/CSS -->
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
@@ -80,6 +129,134 @@ $(document).ready(function() {
         "ordering": true,
         "order": [[1, "desc"]],  // default: order by Title descending
         "pageLength": 25
+    });
+
+    var syncCache = null;
+
+    function updateSyncButtonState() {
+        var count = $('#radarr-sync-rows').find('input[type="checkbox"]:checked').length;
+        $('#radarr-sync-import').prop('disabled', count === 0);
+    }
+
+    function renderSyncRows(items) {
+        var rows = items.map(function(item, idx) {
+            var tmdb = item.tmdb_id ? String(item.tmdb_id) : '';
+            var match = item.match_type === 'tmdb' ? 'TMDB' : (item.match_type === 'title_year' ? 'Titolo/Anno' : '-');
+            var label = item.title || '';
+            return '<tr>' +
+                '<td><input class="form-check-input radarr-sync-select" type="checkbox" data-index="' + idx + '" checked></td>' +
+                '<td>' + label + '</td>' +
+                '<td>' + (item.year || '') + '</td>' +
+                '<td>' + tmdb + '</td>' +
+                '<td>' + match + '</td>' +
+            '</tr>';
+        }).join('');
+        $('#radarr-sync-rows').html(rows);
+        updateSyncButtonState();
+    }
+
+    $('#radarrSyncModal').on('show.bs.modal', function() {
+        $('#radarr-sync-error').addClass('d-none');
+        $('#radarr-sync-summary').addClass('d-none');
+        $('#radarr-sync-list').addClass('d-none');
+        $('#radarr-sync-rows').empty();
+        $('#radarr-sync-import').prop('disabled', true).text('Importa selezionati');
+        if (syncCache) {
+            $('#radarr-sync-total').text(syncCache.counts.total);
+            $('#radarr-sync-present').text(syncCache.counts.present);
+            $('#radarr-sync-missing').text(syncCache.counts.missing);
+            $('#radarr-sync-summary').removeClass('d-none');
+            if (syncCache.missing.length) {
+                renderSyncRows(syncCache.missing);
+                $('#radarr-sync-list').removeClass('d-none');
+            }
+            return;
+        }
+        $('#radarr-sync-loading').removeClass('d-none');
+        fetch('/api/radarr/sync/preview')
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                $('#radarr-sync-loading').addClass('d-none');
+                if (!data || !data.ok) {
+                    throw new Error('sync failed');
+                }
+                syncCache = data;
+                $('#radarr-sync-total').text(data.counts.total);
+                $('#radarr-sync-present').text(data.counts.present);
+                $('#radarr-sync-missing').text(data.counts.missing);
+                $('#radarr-sync-summary').removeClass('d-none');
+                if (data.missing.length) {
+                    renderSyncRows(data.missing);
+                    $('#radarr-sync-list').removeClass('d-none');
+                }
+            })
+            .catch(function() {
+                $('#radarr-sync-loading').addClass('d-none');
+                $('#radarr-sync-error').removeClass('d-none');
+            });
+    });
+
+    $('#radarrSyncModal').on('hidden.bs.modal', function() {
+        $('#radarr-sync-loading').addClass('d-none');
+        $('#radarr-sync-error').addClass('d-none');
+    });
+
+    $(document).on('change', '.radarr-sync-select', function() {
+        updateSyncButtonState();
+    });
+
+    $('#radarr-sync-select-all').on('click', function() {
+        $('#radarr-sync-rows').find('input[type="checkbox"]').prop('checked', true);
+        updateSyncButtonState();
+    });
+
+    $('#radarr-sync-clear').on('click', function() {
+        $('#radarr-sync-rows').find('input[type="checkbox"]').prop('checked', false);
+        updateSyncButtonState();
+    });
+
+    $('#radarr-sync-import').on('click', function() {
+        if (!syncCache || !syncCache.missing.length) {
+            return;
+        }
+        var button = $(this);
+        var selected = [];
+        $('#radarr-sync-rows').find('input[type="checkbox"]:checked').each(function() {
+            var idx = parseInt($(this).data('index'), 10);
+            if (!Number.isNaN(idx) && syncCache.missing[idx]) {
+                selected.push(syncCache.missing[idx]);
+            }
+        });
+        if (!selected.length) {
+            return;
+        }
+        button.prop('disabled', true).text('Importo...');
+        fetch('/api/radarr/sync/import', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: selected })
+        })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (!data || !data.ok) {
+                    throw new Error('import failed');
+                }
+                syncCache = null;
+                button.text('Importati');
+                setTimeout(function() {
+                    var modalEl = document.getElementById('radarrSyncModal');
+                    if (modalEl) {
+                        var modal = bootstrap.Modal.getInstance(modalEl);
+                        if (modal) {
+                            modal.hide();
+                        }
+                    }
+                }, 1000);
+            })
+            .catch(function() {
+                $('#radarr-sync-error').removeClass('d-none').text('Errore durante l\'import.');
+                button.prop('disabled', false).text('Importa selezionati');
+            });
     });
 });
 </script>

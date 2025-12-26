@@ -27,7 +27,7 @@ def _get_config(db: db_core.MediaDB | None = None) -> dict:
 @dataclass
 class RadarrMedia:
     title: str
-    year: int
+    year: int | None
     tmdb_id: int | None
     imdb_id: str | None
     root_folder: str
@@ -122,19 +122,42 @@ def radarr_get_by_tmdb(tmdb_id: int, db: db_core.MediaDB | None = None) -> Radar
         has_file=m.get("hasFile", False)
     )
 
-def radarr_get_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> RadarrMedia | None:
-    """Retrieve a single movie by IMDb ID."""
-    if not imdb_id:
+def radarr_lookup_by_tmdb(tmdb_id: int, db: db_core.MediaDB | None = None) -> RadarrMedia | None:
+    """Lookup a movie by TMDb ID (catalog search)."""
+    if not tmdb_id:
         return None
     cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/movie", headers=cfg["headers"], params={"imdbId": imdb_id})
+    r = requests.get(f"{cfg['url']}/api/v3/movie/lookup/tmdb", headers=cfg["headers"], params={"tmdbId": tmdb_id})
     if r.status_code != 200:
-        print(f"Error fetching movie by IMDb ID {imdb_id}: {r.status_code}")
+        print(f"Error looking up movie by TMDb ID {tmdb_id}: {r.status_code}")
         return None
     data = r.json()
     if not data:
         return None
-    m = data[0]
+    m = data
+    return RadarrMedia(
+        title=m.get("title"),
+        year=m.get("year"),
+        tmdb_id=m.get("tmdbId"),
+        imdb_id=m.get("imdbId"),
+        root_folder=m.get("rootFolderPath"),
+        monitored=m.get("monitored", True),
+        has_file=m.get("hasFile", False)
+    )
+
+def radarr_lookup_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> RadarrMedia | None:
+    """Lookup a movie by IMDb ID (catalog search)."""
+    if not imdb_id:
+        return None
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/movie/lookup/imdb", headers=cfg["headers"], params={"imdbId": imdb_id})
+    if r.status_code != 200:
+        print(f"Error looking up movie by IMDB ID {imdb_id}: {r.status_code}")
+        return None
+    data = r.json()
+    if not data:
+        return None
+    m = data
     return RadarrMedia(
         title=m.get("title"),
         year=m.get("year"),
@@ -156,9 +179,16 @@ def radarr_add_movie(
     Add a RadarrMedia item to Radarr.
     """
     cfg = _get_config(db)
+    year_val = None
+    if item.year is not None:
+        try:
+            year_val = int(item.year)
+        except (TypeError, ValueError):
+            year_val = None
+
     payload = {
         "title": item.title,
-        "year": item.year,
+        "year": year_val,
         "tmdbId": int(item.tmdb_id) if item.tmdb_id else None,
         "imdbId": item.imdb_id,
         "qualityProfileId": profile_id if profile_id is not None else cfg["profile_id"],
@@ -166,10 +196,12 @@ def radarr_add_movie(
         "monitored": item.monitored,
         "addOptions": {"searchForMovie": enable_search if enable_search is not None else cfg["enable_search"]}
     }
+    if year_val is None:
+        payload.pop("year", None)
 
     r = requests.post(f"{cfg['url']}/api/v3/movie", headers=cfg["headers"], json=payload)
     if r.status_code == 201:
-        print(f"Added to Radarr: {item.title} ({item.year})")
+        print(f"Added to Radarr: {item.title} ({year_val if year_val is not None else 'N/A'})")
         return True
     else:
         print(f"Error adding {item.title}: {r.status_code} {r.text}")
@@ -180,6 +212,8 @@ def radarr_lookup(title: str, year: int | None = None, db: db_core.MediaDB | Non
     Search Radarr for a movie by title (and optionally year) using the lookup endpoint.
     Returns a list of RadarrMedia objects.
     """
+    if not title or not str(title).strip():
+        return []
     cfg = _get_config(db)
     params = {"term": title, "apikey": cfg["headers"]["X-Api-Key"]}
     r = requests.get(f"{cfg['url']}/api/v3/movie/lookup", params=params)

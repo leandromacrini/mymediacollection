@@ -34,6 +34,8 @@ def wanted_view():
 def wanted_bulk_delete():
     media_ids = request.form.getlist("media_ids")
     if not media_ids:
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            return jsonify({"ok": False, "error": "no_selection"}), 400
         flash("Nessun elemento selezionato.", "warning")
         return redirect(url_for("wanted.wanted_view"))
 
@@ -45,6 +47,9 @@ def wanted_bulk_delete():
         except ValueError:
             continue
 
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True, "deleted": deleted})
+
     flash(
         f"Eliminati {deleted} elementi dai wanted.",
         "success" if deleted else "warning"
@@ -55,6 +60,8 @@ def wanted_bulk_delete():
 @bp.route("/wanted/<int:media_item_id>/delete", methods=["POST"])
 def wanted_delete(media_item_id):
     deleted = db.delete_media_item(media_item_id)
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return jsonify({"ok": True, "deleted": bool(deleted)})
     if deleted:
         flash("Elemento rimosso dai wanted.", "success")
     else:
@@ -71,13 +78,33 @@ def wanted_lookup_tmdb(media_item_id):
     raw_query = request.args.get("q")
     imdb_query = (raw_query or "").strip()
     if imdb_query and imdb_query.lower().startswith("tt") and imdb_query[2:].isdigit():
-        imdb_match = radarr_api.radarr_get_by_imdb(imdb_query, db)
+        imdb_match = radarr_api.radarr_lookup_by_imdb(imdb_query, db)
         if imdb_match and imdb_match.tmdb_id:
             return json_items([{
                 "title": imdb_match.title,
                 "year": imdb_match.year,
                 "external_id": imdb_match.tmdb_id,
                 "imdb_id": imdb_match.imdb_id
+            }])
+    tmdb_query = (raw_query or "").strip()
+    tmdb_id = None
+    if tmdb_query:
+        import re
+        slug_match = re.match(r"^(\d+)-(.+)", tmdb_query)
+        if slug_match:
+            tmdb_id = slug_match.group(1)
+        else:
+            url_match = re.search(r"/movie/(\d+)", tmdb_query)
+            if url_match:
+                tmdb_id = url_match.group(1)
+    if tmdb_id and tmdb_id.isdigit():
+        tmdb_match = radarr_api.radarr_lookup_by_tmdb(int(tmdb_id), db)
+        if tmdb_match and tmdb_match.tmdb_id:
+            return json_items([{
+                "title": tmdb_match.title,
+                "year": tmdb_match.year,
+                "external_id": tmdb_match.tmdb_id,
+                "imdb_id": tmdb_match.imdb_id
             }])
 
     def normalize_query(value: str | None) -> str | None:
