@@ -32,7 +32,7 @@ def wanted_view():
 
 @bp.route("/wanted/bulk_delete", methods=["POST"])
 def wanted_bulk_delete():
-    media_ids = request.form.getlist("media_ids")
+    media_ids = request.form.getlist("media_ids[]")
     if not media_ids:
         if request.headers.get("X-Requested-With") == "XMLHttpRequest":
             return jsonify({"ok": False, "error": "no_selection"}), 400
