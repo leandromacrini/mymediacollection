@@ -1,0 +1,175 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<style>
+    #plex_table {
+        table-layout: fixed;
+        width: 100%;
+    }
+    #plex_table th,
+    #plex_table td {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    #plex_table th:nth-child(1),
+    #plex_table td:nth-child(1) { width: 44%; }
+    #plex_table th:nth-child(2),
+    #plex_table td:nth-child(2) { width: 8%; }
+    #plex_table th:nth-child(3),
+    #plex_table td:nth-child(3) { width: 12%; }
+    #plex_table th:nth-child(4),
+    #plex_table td:nth-child(4) { width: 20%; }
+    #plex_table th:nth-child(5),
+    #plex_table td:nth-child(5) { width: 16%; }
+</style>
+<h2>Plex Library</h2>
+{% set stats = namespace(total=0, movies=0, series=0) %}
+{% for m in items %}
+    {% set stats.total = stats.total + 1 %}
+    {% if m.media_type == 'movie' %}{% set stats.movies = stats.movies + 1 %}{% endif %}
+    {% if m.media_type == 'show' %}{% set stats.series = stats.series + 1 %}{% endif %}
+{% endfor %}
+<p>
+    Totali: {{ stats.total }} |
+    Film: {{ stats.movies }} |
+    Serie: {{ stats.series }}
+</p>
+
+<table id="plex_table" class="table table-striped table-bordered">
+    <thead>
+        <tr>
+            <th>Title</th>
+            <th>Year</th>
+            <th>Type</th>
+            <th>Library</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for m in items %}
+        <tr>
+            <td>{{ m.title }}</td>
+            <td>{{ m.year }}</td>
+            <td>{{ m.media_type }}</td>
+            <td>{{ m.library }}</td>
+            <td>
+                <button class="btn btn-sm btn-outline-primary plex-detail-btn" type="button"
+                        data-rating-key="{{ m.rating_key }}">
+                    Dettagli
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<div class="modal fade" id="plexDetailModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="plex-detail-title">Dettagli Plex</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info d-none" id="plex-detail-loading">Carico dettagli...</div>
+                <div class="alert alert-danger d-none" id="plex-detail-error">Errore nel caricamento.</div>
+                <div id="plex-detail-body" class="d-none">
+                    <p class="text-muted" id="plex-detail-summary"></p>
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6"><strong>Anno:</strong> <span id="plex-detail-year"></span></div>
+                        <div class="col-12 col-md-6"><strong>Tipo:</strong> <span id="plex-detail-type"></span></div>
+                        <div class="col-12 col-md-6"><strong>Studio:</strong> <span id="plex-detail-studio"></span></div>
+                        <div class="col-12 col-md-6"><strong>Rating:</strong> <span id="plex-detail-rating"></span></div>
+                        <div class="col-12 col-md-6"><strong>Audience:</strong> <span id="plex-detail-audience"></span></div>
+                        <div class="col-12 col-md-6"><strong>Content Rating:</strong> <span id="plex-detail-content-rating"></span></div>
+                        <div class="col-12 col-md-6"><strong>Durata:</strong> <span id="plex-detail-duration"></span></div>
+                        <div class="col-12 col-md-6"><strong>Visti:</strong> <span id="plex-detail-view-count"></span></div>
+                        <div class="col-12 col-md-6"><strong>Ultima visione:</strong> <span id="plex-detail-last-viewed"></span></div>
+                        <div class="col-12 col-md-6"><strong>Original Title:</strong> <span id="plex-detail-original-title"></span></div>
+                        <div class="col-12"><strong>Generi:</strong> <span id="plex-detail-genres"></span></div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+<script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    $('#plex_table').DataTable({
+        paging: true,
+        ordering: true,
+        order: [[1, "desc"]],
+        pageLength: 25
+    });
+
+    function fmtDuration(ms) {
+        if (!ms) {
+            return '';
+        }
+        var minutes = Math.round(ms / 60000);
+        return minutes + ' min';
+    }
+
+    function fmtDate(ts) {
+        if (!ts) {
+            return '';
+        }
+        var d = new Date(ts * 1000);
+        return d.toLocaleString();
+    }
+
+    function fillDetails(details) {
+        $('#plex-detail-title').text(details.title || 'Dettagli Plex');
+        $('#plex-detail-summary').text(details.summary || '');
+        $('#plex-detail-year').text(details.year || '');
+        $('#plex-detail-type').text(details.type || '');
+        $('#plex-detail-studio').text(details.studio || '');
+        $('#plex-detail-rating').text(details.rating || '');
+        $('#plex-detail-audience').text(details.audience_rating || '');
+        $('#plex-detail-content-rating').text(details.content_rating || '');
+        $('#plex-detail-duration').text(fmtDuration(details.duration));
+        $('#plex-detail-view-count').text(details.view_count || '');
+        $('#plex-detail-last-viewed').text(fmtDate(details.last_viewed_at));
+        $('#plex-detail-original-title').text(details.original_title || '');
+        $('#plex-detail-genres').text((details.genres || []).join(', '));
+    }
+
+    $(document).on('click', '.plex-detail-btn', function() {
+        var ratingKey = $(this).data('rating-key');
+        if (!ratingKey) {
+            return;
+        }
+        $('#plex-detail-body').addClass('d-none');
+        $('#plex-detail-error').addClass('d-none');
+        $('#plex-detail-loading').removeClass('d-none');
+        var modalEl = document.getElementById('plexDetailModal');
+        var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+        modal.show();
+        fetch('/api/plex/media/' + ratingKey)
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                $('#plex-detail-loading').addClass('d-none');
+                if (!data || !data.ok) {
+                    throw new Error('not found');
+                }
+                fillDetails(data.details || {});
+                $('#plex-detail-body').removeClass('d-none');
+            })
+            .catch(function() {
+                $('#plex-detail-loading').addClass('d-none');
+                $('#plex-detail-error').removeClass('d-none');
+            });
+    });
+});
+</script>
+{% endblock %}

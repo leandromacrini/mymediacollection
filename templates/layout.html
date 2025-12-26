@@ -6,54 +6,104 @@
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        .mmc-shell {
+            display: flex;
+            min-height: 100vh;
+            background: #f4f5f8;
+        }
+        .mmc-sidebar {
+            width: 230px;
+            background: #1f2328;
+            color: #c9d1d9;
+            padding: 18px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+        .mmc-brand {
+            color: #fff;
+            font-weight: 600;
+            text-decoration: none;
+            font-size: 1.1rem;
+        }
+        .mmc-nav .nav-link {
+            color: #c9d1d9;
+            border-radius: 8px;
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .mmc-nav .nav-link.active,
+        .mmc-nav .nav-link:hover {
+            background: #2d333b;
+            color: #fff;
+        }
+        .mmc-main {
+            flex: 1;
+            padding: 20px 24px 32px;
+        }
+        .mmc-content {
+            background: #fff;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+        }
+        @media (max-width: 991.98px) {
+            .mmc-shell {
+                flex-direction: column;
+            }
+            .mmc-sidebar {
+                width: 100%;
+                flex-direction: row;
+                flex-wrap: wrap;
+                align-items: center;
+                justify-content: space-between;
+            }
+            .mmc-nav {
+                width: 100%;
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+            }
+        }
+    </style>
 </head>
 <body>
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="/">Media Manager</a>
-        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav"
-                aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item"><a class="nav-link" href="/radarr">Radarr</a></li>
-                <li class="nav-item"><a class="nav-link" href="/sonarr">Sonarr</a></li>
-                <li class="nav-item"><a class="nav-link" href="/pending">Pending</a></li>
-                <li class="nav-item"><a class="nav-link" href="/wanted">Wanted</a></li>
-                <li class="nav-item"><a class="nav-link" href="/animeworld">AnimeWorld</a></li>
-
-                <!-- Import dropdown -->
-                <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle" href="#" id="importDropdown" role="button"
-                       data-bs-toggle="dropdown" aria-expanded="false">
-                        Import
-                    </a>
-                    <ul class="dropdown-menu" aria-labelledby="importDropdown">
-                        <li><a class="dropdown-item" href="/import/plex">Plex DB</a></li>
-                        <li><a class="dropdown-item" href="/import/text">Text File</a></li>
-                    </ul>
-                </li>
-
-                <li class="nav-item"><a class="nav-link" href="/settings">Settings</a></li>
-            </ul>
+<div class="mmc-shell">
+    <aside class="mmc-sidebar">
+        <a class="mmc-brand" href="/">Media Manager</a>
+        <nav class="nav flex-column mmc-nav">
+            <a class="nav-link" href="/dashboard"><i class="bi bi-grid-1x2"></i> Dashboard</a>
+            <a class="nav-link" href="/radarr"><i class="bi bi-film"></i> Radarr</a>
+            <a class="nav-link" href="/sonarr"><i class="bi bi-tv"></i> Sonarr</a>
+            <a class="nav-link" href="/plex"><i class="bi bi-collection-play"></i> Plex</a>
+            <a class="nav-link" href="/pending"><i class="bi bi-hourglass-split"></i> Pending</a>
+            <a class="nav-link" href="/wanted"><i class="bi bi-star"></i> Wanted</a>
+            <a class="nav-link" href="/animeworld"><i class="bi bi-cloud-arrow-down"></i> AnimeWorld</a>
+            <a class="nav-link" href="/import/plex"><i class="bi bi-database"></i> Import Plex DB</a>
+            <a class="nav-link" href="/import/text"><i class="bi bi-file-text"></i> Import Text</a>
+            <a class="nav-link" href="/settings"><i class="bi bi-gear"></i> Settings</a>
+        </nav>
+    </aside>
+    <main class="mmc-main">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+          {% if messages %}
+            {% for cat, msg in messages %}
+              <div class="alert alert-{{ cat }} alert-dismissible fade show">
+                {{ msg }}
+                <button class="btn-close" data-bs-dismiss="alert"></button>
+              </div>
+            {% endfor %}
+          {% endif %}
+        {% endwith %}
+        <div class="mmc-content">
+            {% block content %}
+            <!-- Qui verranno inseriti i template specifici delle pagine -->
+            {% endblock %}
         </div>
-    </div>
-</nav>
-{% with messages = get_flashed_messages(with_categories=true) %}
-  {% if messages %}
-    {% for cat, msg in messages %}
-      <div class="alert alert-{{ cat }} alert-dismissible fade show">
-        {{ msg }}
-        <button class="btn-close" data-bs-dismiss="alert"></button>
-      </div>
-    {% endfor %}
-  {% endif %}
-{% endwith %}
-<div class="container mt-3">
-    {% block content %}
-    <!-- Qui verranno inseriti i template specifici delle pagine -->
-    {% endblock %}
+    </main>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>

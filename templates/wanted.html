@@ -721,6 +721,8 @@ $(document).ready(function() {
     var wantedTypeFilter = 'all';
     var selectedIds = new Set();
     var rowInfo = {};
+    var rowById = {};
+    var checkboxById = {};
     var radarrBase = "{{ radarr_url }}";
     
 
@@ -745,7 +747,7 @@ $(document).ready(function() {
         lengthMenu: [25, 50, 100, 200],
         columnDefs: [
             { orderable: false, targets: [0, 5, 6] },
-            { searchable: false, targets: [0, 4, 5, 6] }
+            { searchable: false, targets: [0, 3, 4, 5, 6] }
         ],
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
@@ -757,7 +759,7 @@ $(document).ready(function() {
         if (rowInfo[id]) {
             return rowInfo[id];
         }
-        var $row = $('.wanted-select[value="' + id + '"]').closest('tr');
+        var $row = rowById[id] ? $(rowById[id]) : $('.wanted-select[value="' + id + '"]').closest('tr');
         if (!$row.length) {
             return null;
         }
@@ -774,8 +776,22 @@ $(document).ready(function() {
         return rowInfo[id];
     }
 
+    function buildRowIndex() {
+        rowById = {};
+        checkboxById = {};
+        table.rows().nodes().to$().each(function() {
+            var $row = $(this);
+            var id = $row.find('.wanted-select').val();
+            if (!id) {
+                return;
+            }
+            rowById[id] = this;
+            checkboxById[id] = $row.find('.wanted-select').get(0);
+        });
+    }
+
     function updateRowInRadarr(mediaId) {
-        var $row = $('.wanted-select[value="' + mediaId + '"]').closest('tr');
+        var $row = rowById[mediaId] ? $(rowById[mediaId]) : $('.wanted-select[value="' + mediaId + '"]').closest('tr');
         if (!$row.length) {
             return;
         }
@@ -798,12 +814,14 @@ $(document).ready(function() {
 
     function removeRowsByIds(ids) {
         ids.forEach(function(id) {
-            var $row = $('.wanted-select[value="' + id + '"]').closest('tr');
+            var $row = rowById[id] ? $(rowById[id]) : $('.wanted-select[value="' + id + '"]').closest('tr');
             if ($row.length) {
                 table.row($row).remove();
             }
             selectedIds.delete(id);
             delete rowInfo[id];
+            delete rowById[id];
+            delete checkboxById[id];
         });
         table.draw(false);
         syncSelectionToTable();
@@ -811,7 +829,8 @@ $(document).ready(function() {
     }
 
     function syncSelectionToTable() {
-        $('.wanted-select').each(function() {
+        var nodes = table.rows({ page: 'current' }).nodes();
+        $(nodes).find('.wanted-select').each(function() {
             var id = $(this).val();
             $(this).prop('checked', selectedIds.has(id));
         });
@@ -1000,8 +1019,8 @@ $(document).ready(function() {
     });
 
     function applyExternalUpdate(mediaId, source, externalId, link) {
-        var $checkbox = $('.wanted-select[value="' + mediaId + '"]');
-        var $row = $checkbox.closest('tr');
+        var $checkbox = checkboxById[mediaId] ? $(checkboxById[mediaId]) : $('.wanted-select[value="' + mediaId + '"]');
+        var $row = rowById[mediaId] ? $(rowById[mediaId]) : $checkbox.closest('tr');
         if (!$row.length) {
             return;
         }
@@ -1442,6 +1461,7 @@ $(document).ready(function() {
         });
     });
 
+    buildRowIndex();
     applyFilters();
     syncSelectionToTable();
 

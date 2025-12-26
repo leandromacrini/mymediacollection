@@ -233,6 +233,10 @@ INSERT INTO service_settings (service_id, key, label, value, value_type, require
 SELECT id, 'plex_web_url', 'URL Plex Web', '', 'string', FALSE FROM services WHERE name='Plex Web'
 ON CONFLICT (service_id, key) DO NOTHING;
 
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'plex_web_token', 'Plex Token', '', 'password', FALSE FROM services WHERE name='Plex Web'
+ON CONFLICT (service_id, key) DO NOTHING;
+
 -- Anime World
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
 SELECT id, 'animeworld_url', 'Anime World URL', '', 'string', TRUE FROM services WHERE name='Anime World'
