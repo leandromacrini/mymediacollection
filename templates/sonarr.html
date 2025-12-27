@@ -1,42 +1,11 @@
 {% extends "layout.html" %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/sonarr.css') }}">
+{% endblock %}
+
 {% block content %}
-<style>
-    #sonarr_table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    #sonarr_table th,
-    #sonarr_table td {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    #sonarr_table th:nth-child(1),
-    #sonarr_table td:nth-child(1) { width: 50%; }
-    #sonarr_table th:nth-child(2),
-    #sonarr_table td:nth-child(2) { width: 10%; }
-    #sonarr_table th:nth-child(3),
-    #sonarr_table td:nth-child(3) { width: 20%; }
-    #sonarr_table th:nth-child(4),
-    #sonarr_table td:nth-child(4) { width: 10%; }
-    .sonarr-skeleton {
-        display: grid;
-        gap: 10px;
-        margin-bottom: 16px;
-    }
-    .sonarr-skeleton__row {
-        height: 46px;
-        border-radius: 8px;
-        background: linear-gradient(90deg, #eceff3 25%, #f6f7f9 37%, #eceff3 63%);
-        background-size: 400% 100%;
-        animation: sonarr-shimmer 1.2s ease-in-out infinite;
-    }
-    @keyframes sonarr-shimmer {
-        0% { background-position: 100% 0; }
-        100% { background-position: 0 0; }
-    }
-</style>
 <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
     <h2 class="mb-0"><i class="bi bi-tv me-2"></i>Sonarr Series</h2>
     <button class="btn btn-sm btn-outline-primary ms-auto" type="button" id="sonarr-sync-btn" data-bs-toggle="modal" data-bs-target="#sonarrSyncModal">
@@ -113,195 +82,12 @@
     </div>
 </div>
 
-<!-- DataTables JS/CSS -->
-<link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<div id="sonarr-config" data-sonarr-url="{{ sonarr_url }}" class="d-none"></div>
+{% endblock %}
+
+{% block extra_scripts %}
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
-
-<script>
-$(document).ready(function() {
-    var sonarrBase = "{{ sonarr_url }}";
-    var sonarrTable = $('#sonarr_table').DataTable({
-        paging: true,
-        ordering: true,
-        order: [[1, "desc"]],
-        pageLength: 25,
-        autoWidth: false,
-        deferRender: true,
-        ajax: {
-            url: '/api/sonarr/list',
-            dataSrc: function(json) {
-                if (json && json.counts) {
-                    $('#sonarr-count-total').text(json.counts.total || 0);
-                    $('#sonarr-count-monitored').text(json.counts.monitored || 0);
-                    $('#sonarr-count-unmonitored').text(json.counts.unmonitored || 0);
-                }
-                return json.items || [];
-            }
-        },
-        columns: [
-            {
-                data: 'title',
-                render: function(data, type, row) {
-                    if (type === 'display') {
-                        var slug = row.slug ? row.slug : '';
-                        return '<a href="' + sonarrBase + '/series/' + slug + '" target="_blank">' + (data || '') + '</a>';
-                    }
-                    return data || '';
-                }
-            },
-            { data: 'year' },
-            { data: 'tvdb_id' },
-            {
-                data: 'monitored',
-                render: function(val, type) {
-                    if (type === 'display') {
-                        return val ? 'Yes' : 'No';
-                    }
-                    return val ? 1 : 0;
-                }
-            }
-        ],
-        initComplete: function() {}
-    });
-
-    sonarrTable.on('xhr', function() {
-        var skeleton = document.getElementById('sonarr-skeleton');
-        if (skeleton) {
-            skeleton.style.display = 'none';
-        }
-        document.getElementById('sonarr_table').classList.remove('d-none');
-    });
-
-    var sonarrSyncCache = null;
-
-    function updateSonarrSyncButton() {
-        var count = $('#sonarr-sync-rows').find('input[type="checkbox"]:checked').length;
-        $('#sonarr-sync-import').prop('disabled', count === 0);
-    }
-
-    function renderSonarrSyncRows(items) {
-        var rows = items.map(function(item, idx) {
-            var tvdb = item.tvdb_id ? String(item.tvdb_id) : '';
-            var match = item.match_type === 'tvdb' ? 'TVDB' : (item.match_type === 'title_year' ? 'Titolo/Anno' : '-');
-            var label = item.title || '';
-            return '<tr>' +
-                '<td><input class="form-check-input sonarr-sync-select" type="checkbox" data-index="' + idx + '" checked></td>' +
-                '<td>' + label + '</td>' +
-                '<td>' + (item.year || '') + '</td>' +
-                '<td>' + tvdb + '</td>' +
-                '<td>' + match + '</td>' +
-            '</tr>';
-        }).join('');
-        $('#sonarr-sync-rows').html(rows);
-        updateSonarrSyncButton();
-    }
-
-    $('#sonarrSyncModal').on('show.bs.modal', function() {
-        $('#sonarr-sync-error').addClass('d-none');
-        $('#sonarr-sync-summary').addClass('d-none');
-        $('#sonarr-sync-list').addClass('d-none');
-        $('#sonarr-sync-rows').empty();
-        $('#sonarr-sync-import').prop('disabled', true).text('Importa selezionati');
-        if (sonarrSyncCache) {
-            $('#sonarr-sync-total').text(sonarrSyncCache.counts.total);
-            $('#sonarr-sync-present').text(sonarrSyncCache.counts.present);
-            $('#sonarr-sync-missing').text(sonarrSyncCache.counts.missing);
-            $('#sonarr-sync-summary').removeClass('d-none');
-            if (sonarrSyncCache.missing.length) {
-                renderSonarrSyncRows(sonarrSyncCache.missing);
-                $('#sonarr-sync-list').removeClass('d-none');
-            }
-            return;
-        }
-        $('#sonarr-sync-loading').removeClass('d-none');
-        fetch('/api/sonarr/sync/preview')
-            .then(function(resp) { return resp.json(); })
-            .then(function(data) {
-                $('#sonarr-sync-loading').addClass('d-none');
-                if (!data || !data.ok) {
-                    throw new Error('sync failed');
-                }
-                sonarrSyncCache = data;
-                $('#sonarr-sync-total').text(data.counts.total);
-                $('#sonarr-sync-present').text(data.counts.present);
-                $('#sonarr-sync-missing').text(data.counts.missing);
-                $('#sonarr-sync-summary').removeClass('d-none');
-                if (data.missing.length) {
-                    renderSonarrSyncRows(data.missing);
-                    $('#sonarr-sync-list').removeClass('d-none');
-                }
-            })
-            .catch(function() {
-                $('#sonarr-sync-loading').addClass('d-none');
-                $('#sonarr-sync-error').removeClass('d-none');
-            });
-    });
-
-    $('#sonarrSyncModal').on('hidden.bs.modal', function() {
-        $('#sonarr-sync-loading').addClass('d-none');
-        $('#sonarr-sync-error').addClass('d-none');
-    });
-
-    $(document).on('change', '.sonarr-sync-select', function() {
-        updateSonarrSyncButton();
-    });
-
-    $('#sonarr-sync-select-all').on('click', function() {
-        $('#sonarr-sync-rows').find('input[type="checkbox"]').prop('checked', true);
-        updateSonarrSyncButton();
-    });
-
-    $('#sonarr-sync-clear').on('click', function() {
-        $('#sonarr-sync-rows').find('input[type="checkbox"]').prop('checked', false);
-        updateSonarrSyncButton();
-    });
-
-    $('#sonarr-sync-import').on('click', function() {
-        if (!sonarrSyncCache || !sonarrSyncCache.missing.length) {
-            return;
-        }
-        var button = $(this);
-        var selected = [];
-        $('#sonarr-sync-rows').find('input[type="checkbox"]:checked').each(function() {
-            var idx = parseInt($(this).data('index'), 10);
-            if (!Number.isNaN(idx) && sonarrSyncCache.missing[idx]) {
-                selected.push(sonarrSyncCache.missing[idx]);
-            }
-        });
-        if (!selected.length) {
-            return;
-        }
-        button.prop('disabled', true).text('Importo...');
-        fetch('/api/sonarr/sync/import', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items: selected })
-        })
-            .then(function(resp) { return resp.json(); })
-            .then(function(data) {
-                if (!data || !data.ok) {
-                    throw new Error('import failed');
-                }
-                sonarrSyncCache = null;
-                button.text('Importati');
-                setTimeout(function() {
-                    var modalEl = document.getElementById('sonarrSyncModal');
-                    if (modalEl) {
-                        var modal = bootstrap.Modal.getInstance(modalEl);
-                        if (modal) {
-                            modal.hide();
-                        }
-                    }
-                }, 1000);
-            })
-            .catch(function() {
-                $('#sonarr-sync-error').removeClass('d-none').text('Errore durante l\'import.');
-                button.prop('disabled', false).text('Importa selezionati');
-            });
-    });
-});
-</script>
-
+<script src="{{ url_for('static', filename='scripts/sonarr.js') }}"></script>
 {% endblock %}

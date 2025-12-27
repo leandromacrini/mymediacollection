@@ -1,0 +1,38 @@
+#radarr_table {
+    table-layout: fixed;
+    width: 100%;
+}
+#radarr_table th,
+#radarr_table td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#radarr_table th:nth-child(1),
+#radarr_table td:nth-child(1) { width: 36%; }
+#radarr_table th:nth-child(2),
+#radarr_table td:nth-child(2) { width: 8%; }
+#radarr_table th:nth-child(3),
+#radarr_table td:nth-child(3) { width: 12%; }
+#radarr_table th:nth-child(4),
+#radarr_table td:nth-child(4) { width: 12%; }
+#radarr_table th:nth-child(5),
+#radarr_table td:nth-child(5) { width: 10%; }
+#radarr_table th:nth-child(6),
+#radarr_table td:nth-child(6) { width: 10%; }
+.radarr-skeleton {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.radarr-skeleton__row {
+    height: 46px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #eceff3 25%, #f6f7f9 37%, #eceff3 63%);
+    background-size: 400% 100%;
+    animation: radarr-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes radarr-shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: 0 0; }
+}

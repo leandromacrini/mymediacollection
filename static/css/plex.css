@@ -1,0 +1,60 @@
+#plex_table {
+    table-layout: fixed;
+    width: 100%;
+}
+#plex_table th,
+#plex_table td {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#plex_table th:nth-child(1),
+#plex_table td:nth-child(1) { width: 40%; }
+#plex_table th:nth-child(2),
+#plex_table td:nth-child(2) { width: 8%; }
+#plex_table th:nth-child(3),
+#plex_table td:nth-child(3) { width: 10%; }
+#plex_table th:nth-child(4),
+#plex_table td:nth-child(4) { width: 18%; }
+#plex_table th:nth-child(5),
+#plex_table td:nth-child(5) { width: 6%; text-align: center; }
+#plex_table th:nth-child(6),
+#plex_table td:nth-child(6) { width: 6%; text-align: center; }
+#plex_table th:nth-child(7),
+#plex_table td:nth-child(7) { width: 6%; text-align: center; }
+#plex_table th:nth-child(8),
+#plex_table td:nth-child(8) { width: 6%; text-align: center; }
+.plex-skeleton {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.plex-skeleton__row {
+    height: 46px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #eceff3 25%, #f6f7f9 37%, #eceff3 63%);
+    background-size: 400% 100%;
+    animation: plex-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes plex-shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: 0 0; }
+}
+#plexDetailModal .modal-content {
+    position: relative;
+    overflow: hidden;
+}
+#plexDetailModal .plex-detail-backdrop-bg {
+    position: absolute;
+    inset: 0;
+    background-size: cover;
+    background-position: center;
+    opacity: 0.12;
+    pointer-events: none;
+}
+#plexDetailModal .modal-header,
+#plexDetailModal .modal-body,
+#plexDetailModal .modal-footer {
+    position: relative;
+    z-index: 1;
+}

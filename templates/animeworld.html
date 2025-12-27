@@ -1,4 +1,7 @@
 {% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/animeworld.css') }}">
+{% endblock %}
 {% block content %}
 
 <h2 class="mb-4"><i class="bi bi-cloud-arrow-down me-2"></i>AnimeWorld</h2>
@@ -159,4 +162,7 @@
 </div>
 {% endif %}
 
+{% endblock %}
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='scripts/animeworld.js') }}"></script>
 {% endblock %}

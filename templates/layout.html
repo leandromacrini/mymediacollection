@@ -6,69 +6,8 @@
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
-    <style>
-        .mmc-shell {
-            display: flex;
-            min-height: 100vh;
-            background: #f4f5f8;
-        }
-        .mmc-sidebar {
-            width: 230px;
-            background: #1f2328;
-            color: #c9d1d9;
-            padding: 18px 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 18px;
-        }
-        .mmc-brand {
-            color: #fff;
-            font-weight: 600;
-            text-decoration: none;
-            font-size: 1.1rem;
-        }
-        .mmc-nav .nav-link {
-            color: #c9d1d9;
-            border-radius: 8px;
-            padding: 8px 12px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .mmc-nav .nav-link.active,
-        .mmc-nav .nav-link:hover {
-            background: #2d333b;
-            color: #fff;
-        }
-        .mmc-main {
-            flex: 1;
-            padding: 20px 24px 32px;
-        }
-        .mmc-content {
-            background: #fff;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
-        }
-        @media (max-width: 991.98px) {
-            .mmc-shell {
-                flex-direction: column;
-            }
-            .mmc-sidebar {
-                width: 100%;
-                flex-direction: row;
-                flex-wrap: wrap;
-                align-items: center;
-                justify-content: space-between;
-            }
-            .mmc-nav {
-                width: 100%;
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-            }
-        }
-    </style>
+    <link href="{{ url_for('static', filename='css/layout.css') }}" rel="stylesheet">
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
 <div class="mmc-shell">
@@ -114,44 +53,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  function showToast(message, category) {
-    var container = document.querySelector('.toast-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.className = 'toast-container position-fixed top-0 end-0 p-3';
-      container.style.zIndex = '1080';
-      document.body.appendChild(container);
-    }
-    var toastClass = 'text-bg-info';
-    if (category === 'success') toastClass = 'text-bg-success';
-    if (category === 'danger' || category === 'error') toastClass = 'text-bg-danger';
-    if (category === 'warning') toastClass = 'text-bg-warning';
-    var toastEl = document.createElement('div');
-    toastEl.className = 'toast ' + toastClass + ' border-0 mb-2';
-    toastEl.setAttribute('role', 'alert');
-    toastEl.setAttribute('aria-live', 'assertive');
-    toastEl.setAttribute('aria-atomic', 'true');
-    toastEl.setAttribute('data-bs-delay', '3500');
-    toastEl.innerHTML = '<div class="d-flex">' +
-      '<div class="toast-body">' + message + '</div>' +
-      '<button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>' +
-      '</div>';
-    container.appendChild(toastEl);
-    var toast = new bootstrap.Toast(toastEl, { autohide: true });
-    toast.show();
-    toastEl.addEventListener('hidden.bs.toast', function() {
-      toastEl.remove();
-      if (!container.querySelector('.toast')) {
-        container.remove();
-      }
-    });
-  }
-
-  document.querySelectorAll('.toast').forEach(function(el) {
-    var toast = new bootstrap.Toast(el, { autohide: true });
-    toast.show();
-  });
-</script>
+<script src="{{ url_for('static', filename='scripts/layout.js') }}"></script>
+{% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -1,0 +1,82 @@
+.wanted-table {
+    table-layout: fixed;
+    width: 100%;
+}
+.wanted-table th,
+.wanted-table td {
+    vertical-align: middle;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.wanted-table th:nth-child(1),
+.wanted-table td:nth-child(1) { width: 4%; }
+.wanted-table th:nth-child(2),
+.wanted-table td:nth-child(2) { width: 30%; }
+.wanted-table th:nth-child(3),
+.wanted-table td:nth-child(3) { width: 8%; }
+.wanted-table th:nth-child(4),
+.wanted-table td:nth-child(4) { width: 16%; }
+.wanted-table th:nth-child(5),
+.wanted-table td:nth-child(5) { width: 18%; }
+.wanted-table th:nth-child(6),
+.wanted-table td:nth-child(6) { width: 18%; }
+.wanted-table th:nth-child(7),
+.wanted-table td:nth-child(7) { width: 6%; }
+.badge-imdb { background: #f5c518; color: #111; }
+.badge-tmdb { background: #01b4e4; color: #06202a; }
+.badge-anilist { background: #02a9ff; color: #06283d; }
+.badge-radarr { background: #f6a000; color: #2b1a00; }
+.badge-sonarr { background: #3b82f6; color: #0b1a3a; }
+.btn-imdb {
+    background: #f5c518;
+    border-color: #f5c518;
+    color: #111;
+}
+.btn-tmdb {
+    background: #01b4e4;
+    border-color: #01b4e4;
+    color: #06202a;
+}
+.btn-anilist {
+    background: #02a9ff;
+    border-color: #02a9ff;
+    color: #06283d;
+}
+.btn-radarr {
+    background: #f6a000;
+    border-color: #f6a000;
+    color: #2b1a00;
+}
+.btn-sonarr {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #0b1a3a;
+}
+.wanted-actions .btn:disabled,
+#bulk-radarr-btn:disabled,
+#bulk-sonarr-btn:disabled,
+#bulk-merge-btn:disabled,
+#bulk-delete-btn:disabled {
+    background: #e9ecef;
+    color: #6c757d;
+    border-color: transparent;
+    opacity: 1;
+    box-shadow: none;
+}
+.wanted-skeleton {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+.wanted-skeleton__row {
+    height: 46px;
+    border-radius: 8px;
+    background: linear-gradient(90deg, #eceff3 25%, #f6f7f9 37%, #eceff3 63%);
+    background-size: 400% 100%;
+    animation: wanted-shimmer 1.2s ease-in-out infinite;
+}
+@keyframes wanted-shimmer {
+    0% { background-position: 100% 0; }
+    100% { background-position: 0 0; }
+}

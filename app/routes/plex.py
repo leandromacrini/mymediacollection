@@ -8,7 +8,8 @@ bp = Blueprint("plex", __name__)
 
 @bp.route("/plex")
 def plex_view():
-    return render_template("plex.html")
+    plex_cfg = plex_web_api._get_config(db)
+    return render_template("plex.html", plex_url=plex_cfg.get("url") or "")
 
 
 @bp.route("/api/plex/media/<rating_key>")
@@ -22,6 +23,7 @@ def plex_media_details(rating_key):
 @bp.route("/api/plex/media")
 def plex_media_list():
     items = plex_web_api.plex_get_media_items(db)
+    machine_id = plex_web_api.plex_get_machine_identifier(db)
     radarr_movies = radarr_api.radarr_get_all_movies(db)
     radarr_tmdb = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id}
     radarr_titles = {((m.title or "").strip().lower(), m.year) for m in radarr_movies if m.title}
@@ -72,6 +74,7 @@ def plex_media_list():
             "media_type": m.media_type,
             "library": m.library,
             "rating_key": m.rating_key,
+            "machine_identifier": machine_id,
             "in_radarr": in_radarr,
             "in_sonarr": in_sonarr,
             "in_wanted": in_wanted
@@ -80,6 +83,7 @@ def plex_media_list():
     return jsonify({
         "ok": True,
         "items": payload,
+        "machine_identifier": machine_id,
         "counts": {
             "total": len(payload),
             "movies": movies,

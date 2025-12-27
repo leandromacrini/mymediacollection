@@ -1,4 +1,4 @@
-{% set stats = namespace(total=0, movies=0, series=0, missing=0, in_radarr=0) %}
+{% set stats = namespace(total=0, movies=0, series=0, missing=0, in_radarr=0, in_sonarr=0) %}
 {% for item in items %}
     {% set stats.total = stats.total + 1 %}
     {% if item.media_type == "movie" %}{% set stats.movies = stats.movies + 1 %}{% endif %}
@@ -7,6 +7,7 @@
     {% if item.media_type == "series" and not item.external_ids.get('tvdb') %}{% set stats.missing = stats.missing + 1 %}{% endif %}
     {% if item.category == "anime" and not item.external_ids.get('anilist') %}{% set stats.missing = stats.missing + 1 %}{% endif %}
     {% if item.external_ids.get('tmdb') and (item.external_ids.get('tmdb') in radarr_tmdb) %}{% set stats.in_radarr = stats.in_radarr + 1 %}{% endif %}
+    {% if item.external_ids.get('tvdb') and (item.external_ids.get('tvdb') in sonarr_tvdb) %}{% set stats.in_sonarr = stats.in_sonarr + 1 %}{% endif %}
 {% endfor %}
 <div id="wanted-stats-data"
      class="d-none"
@@ -14,7 +15,8 @@
      data-movies="{{ stats.movies }}"
      data-series="{{ stats.series }}"
      data-missing="{{ stats.missing }}"
-     data-in-radarr="{{ stats.in_radarr }}"></div>
+     data-in-radarr="{{ stats.in_radarr }}"
+     data-in-sonarr="{{ stats.in_sonarr }}"></div>
 
 <form id="bulk-delete-form" method="post" action="{{ url_for('wanted.wanted_bulk_delete') }}"></form>
 

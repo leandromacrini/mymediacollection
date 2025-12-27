@@ -1,0 +1,44 @@
+.plex-table th.sortable {
+    cursor: pointer;
+    position: relative;
+    padding-right: 1.4rem;
+}
+.plex-table th.sortable::after {
+    content: '^';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.75rem;
+    opacity: 0.3;
+}
+.plex-table th.sorted-desc::after {
+    content: 'v';
+    opacity: 0.9;
+}
+.plex-table th.sorted-asc::after {
+    content: '^';
+    opacity: 0.9;
+}
+.plex-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.plex-loading__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+}
+.plex-loading__card {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px 22px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+}

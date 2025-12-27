@@ -1,29 +1,9 @@
 {% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/pending.css') }}">
+{% endblock %}
+
 {% block content %}
-<style>
-    .pending-table {
-        table-layout: fixed;
-        width: 100%;
-    }
-    .pending-table th,
-    .pending-table td {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-    }
-    .pending-table th:nth-child(1),
-    .pending-table td:nth-child(1) { width: 32%; }
-    .pending-table th:nth-child(2),
-    .pending-table td:nth-child(2) { width: 8%; }
-    .pending-table th:nth-child(3),
-    .pending-table td:nth-child(3) { width: 12%; }
-    .pending-table th:nth-child(4),
-    .pending-table td:nth-child(4) { width: 14%; }
-    .pending-table th:nth-child(5),
-    .pending-table td:nth-child(5) { width: 14%; }
-    .pending-table th:nth-child(6),
-    .pending-table td:nth-child(6) { width: 14%; }
-</style>
 <h2><i class="bi bi-hourglass-split me-2"></i>Pending Media</h2>
 <table class="table table-striped pending-table">
     <thead>
@@ -49,4 +29,8 @@
         {% endfor %}
     </tbody>
 </table>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='scripts/pending.js') }}"></script>
 {% endblock %}

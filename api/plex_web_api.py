@@ -108,6 +108,16 @@ def plex_get_media_items(db: db_core.MediaDB | None = None) -> list[PlexMedia]:
     return items
 
 
+def plex_get_machine_identifier(db: db_core.MediaDB | None = None) -> str | None:
+    data = _plex_request("/", db)
+    if not data:
+        data = _plex_request("/library/sections", db)
+    if not data:
+        return None
+    container = data.get("MediaContainer") or {}
+    return container.get("machineIdentifier")
+
+
 def plex_get_media_details(rating_key: str, db: db_core.MediaDB | None = None) -> dict | None:
     if not rating_key:
         return None

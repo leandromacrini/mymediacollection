@@ -1,0 +1,61 @@
+.mmc-shell {
+    display: flex;
+    min-height: 100vh;
+    background: #f4f5f8;
+}
+.mmc-sidebar {
+    width: 230px;
+    background: #1f2328;
+    color: #c9d1d9;
+    padding: 18px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+.mmc-brand {
+    color: #fff;
+    font-weight: 600;
+    text-decoration: none;
+    font-size: 1.1rem;
+}
+.mmc-nav .nav-link {
+    color: #c9d1d9;
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.mmc-nav .nav-link.active,
+.mmc-nav .nav-link:hover {
+    background: #2d333b;
+    color: #fff;
+}
+.mmc-main {
+    flex: 1;
+    padding: 20px 24px 32px;
+}
+.mmc-content {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+@media (max-width: 991.98px) {
+    .mmc-shell {
+        flex-direction: column;
+    }
+    .mmc-sidebar {
+        width: 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .mmc-nav {
+        width: 100%;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+}
