@@ -34,7 +34,9 @@
             <tbody>
             {% for item in items %}
                 {% set tmdb_id = item.external_ids.get('tmdb') %}
+                {% set tvdb_id = item.external_ids.get('tvdb') %}
                 {% set in_radarr = tmdb_id and (tmdb_id in radarr_tmdb) %}
+                {% set in_sonarr = tvdb_id and (tvdb_id in sonarr_tvdb) %}
                 {% set missing_external = false %}
                 {% if item.media_type == "movie" and not tmdb_id %}
                     {% set missing_external = true %}
@@ -48,8 +50,11 @@
                 <tr data-media-type="{{ item.media_type }}"
                     data-category="{{ item.category or '' }}"
                     data-has-tmdb="{{ '1' if tmdb_id else '0' }}"
+                    data-has-tvdb="{{ '1' if tvdb_id else '0' }}"
                     data-tmdb-id="{{ tmdb_id or '' }}"
+                    data-tvdb-id="{{ tvdb_id or '' }}"
                     data-in-radarr="{{ '1' if in_radarr else '0' }}"
+                    data-in-sonarr="{{ '1' if in_sonarr else '0' }}"
                     data-missing-external="{{ '1' if missing_external else '0' }}">
 
                     <td class="text-center">
@@ -149,6 +154,27 @@
                             {% endif %}
                         {% endif %}
                     {% endif %}
+                    {% if item.media_type == "series" and tvdb_id and (tvdb_id in sonarr_tvdb) %}
+                        {% set sonarr_slug = sonarr_slug_map.get(tvdb_id|string) %}
+                        {% if sonarr_url and sonarr_slug %}
+                            <a class="badge badge-sonarr text-decoration-none"
+                               href="{{ sonarr_url }}/series/{{ sonarr_slug }}"
+                               target="_blank"
+                               rel="noopener"
+                               data-bs-toggle="tooltip"
+                               data-bs-placement="top"
+                               title="Sonarr {{ tvdb_id }}">
+                                Sonarr
+                            </a>
+                        {% else %}
+                            <span class="badge badge-sonarr"
+                                  data-bs-toggle="tooltip"
+                                  data-bs-placement="top"
+                                  title="Sonarr {{ tvdb_id }}">
+                                Sonarr
+                            </span>
+                        {% endif %}
+                    {% endif %}
                 </div>
             </td>
 
@@ -165,6 +191,47 @@
                                 </button>
                             {% endif %}
 
+                            {% if item.media_type == "series" %}
+                                {% if tvdb_id %}
+                                    {% if in_sonarr %}
+                                        <span class="d-inline-flex"
+                                              data-bs-toggle="tooltip"
+                                              data-bs-placement="top"
+                                              title="Gia in Sonarr">
+                                            <button class="btn btn-sm btn-sonarr d-inline-flex align-items-center gap-1 sonarr-add-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#sonarrAddModal"
+                                                    data-media-id="{{ item.id }}"
+                                                    data-title="{{ item.title }}"
+                                                    disabled>
+                                                <i class="bi bi-cloud-download"></i>
+                                                Sonarr
+                                            </button>
+                                        </span>
+                                    {% else %}
+                                        <button class="btn btn-sm btn-sonarr d-inline-flex align-items-center gap-1 sonarr-add-btn"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#sonarrAddModal"
+                                                data-media-id="{{ item.id }}"
+                                                data-title="{{ item.title }}">
+                                            <i class="bi bi-cloud-download"></i>
+                                            Sonarr
+                                        </button>
+                                    {% endif %}
+                                {% else %}
+                                    <span class="d-inline-flex"
+                                          data-bs-toggle="tooltip"
+                                          data-bs-placement="top"
+                                          title="TVDB mancante">
+                                        <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                                                disabled>
+                                            <i class="bi bi-cloud-download"></i>
+                                            Sonarr
+                                        </button>
+                                    </span>
+                                {% endif %}
+                            {% endif %}
+
                             {% if item.media_type == "movie" %}
                                 <button class="btn btn-sm btn-tmdb d-inline-flex align-items-center gap-1"
                                         data-bs-toggle="modal"
@@ -176,20 +243,42 @@
 
                             {% if item.media_type == "movie" %}
                                 {% if tmdb_id %}
-                                    <button class="btn btn-sm btn-radarr d-inline-flex align-items-center gap-1 radarr-add-btn"
-                                            data-bs-toggle="modal"
-                                            data-bs-target="#radarrAddModal"
-                                            data-media-id="{{ item.id }}"
-                                            data-title="{{ item.title }}"
-                                            {% if in_radarr %}disabled{% endif %}>
-                                        <i class="bi bi-cloud-download"></i>
-                                        Radarr
-                                    </button>
+                                    {% if in_radarr %}
+                                        <span class="d-inline-flex"
+                                              data-bs-toggle="tooltip"
+                                              data-bs-placement="top"
+                                              title="Gia in Radarr">
+                                            <button class="btn btn-sm btn-radarr d-inline-flex align-items-center gap-1 radarr-add-btn"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#radarrAddModal"
+                                                    data-media-id="{{ item.id }}"
+                                                    data-title="{{ item.title }}"
+                                                    disabled>
+                                                <i class="bi bi-cloud-download"></i>
+                                                Radarr
+                                            </button>
+                                        </span>
+                                    {% else %}
+                                        <button class="btn btn-sm btn-radarr d-inline-flex align-items-center gap-1 radarr-add-btn"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#radarrAddModal"
+                                                data-media-id="{{ item.id }}"
+                                                data-title="{{ item.title }}">
+                                            <i class="bi bi-cloud-download"></i>
+                                            Radarr
+                                        </button>
+                                    {% endif %}
                                 {% else %}
-                                    <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1" disabled>
-                                        <i class="bi bi-cloud-download"></i>
-                                        no TMDB
-                                    </button>
+                                    <span class="d-inline-flex"
+                                          data-bs-toggle="tooltip"
+                                          data-bs-placement="top"
+                                          title="TMDB mancante">
+                                        <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                                                disabled>
+                                            <i class="bi bi-cloud-download"></i>
+                                            Radarr
+                                        </button>
+                                    </span>
                                 {% endif %}
                             {% endif %}
 
@@ -485,6 +574,63 @@
             </div>
         </div>
 
+        <!-- ================= SONARR SINGLE ADD MODAL ================= -->
+        <div class="modal fade"
+             id="sonarrAddModal"
+             tabindex="-1"
+             aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title">Invia a Sonarr</h5>
+                        <button type="button" class="btn-close"
+                                data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <div class="mb-2 text-muted" id="sonarr-add-title">Seleziona root e profilo qualità.</div>
+                        <input type="hidden" id="sonarr-add-media-id" value="">
+                        <input type="hidden" id="sonarr-default-root" value="{{ sonarr_defaults.root_folder or '' }}">
+                        <input type="hidden" id="sonarr-default-profile" value="{{ sonarr_defaults.profile_id or '' }}">
+                        <input type="hidden" id="sonarr-default-search" value="{{ '1' if sonarr_defaults.enable_search else '0' }}">
+                        <div class="mb-3">
+                            <label class="form-label">Root folder</label>
+                            <select class="form-select form-select-sm" id="sonarr-root-select">
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Quality profile</label>
+                            <select class="form-select form-select-sm" id="sonarr-profile-select">
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="sonarr-search-enable">
+                            <label class="form-check-label" for="sonarr-search-enable">Avvia ricerca su Sonarr</label>
+                        </div>
+                        <div class="alert alert-info d-none" id="sonarr-add-status">Invio a Sonarr in corso...</div>
+                        <div class="alert alert-danger d-none" id="sonarr-add-error">Errore durante il caricamento.</div>
+                    </div>
+
+                    <div class="modal-footer border-0">
+                        <button class="btn btn-light"
+                                data-bs-dismiss="modal">
+                            Annulla
+                        </button>
+                        <button type="button"
+                                class="btn btn-primary d-inline-flex align-items-center gap-1"
+                                id="sonarr-add-confirm">
+                            <i class="bi bi-cloud-download"></i>
+                            Invia
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
         <!-- ================= RADARR BULK ADD MODAL ================= -->
         <div class="modal fade"
              id="bulkRadarrModal"
@@ -534,6 +680,64 @@
                         <button type="button"
                                 class="btn btn-primary d-inline-flex align-items-center gap-1"
                                 id="bulk-radarr-confirm">
+                            <i class="bi bi-cloud-download"></i>
+                            Invia
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= SONARR BULK ADD MODAL ================= -->
+        <div class="modal fade"
+             id="bulkSonarrModal"
+             tabindex="-1"
+             aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+
+                    <div class="modal-header border-0">
+                        <h5 class="modal-title">Invia selezionati a Sonarr</h5>
+                        <button type="button" class="btn-close"
+                                data-bs-dismiss="modal"></button>
+                    </div>
+
+                    <div class="modal-body">
+                        <p class="mb-2">
+                            Selezionati: <strong id="bulk-sonarr-count">0</strong>
+                        </p>
+                        <p class="text-muted small mb-2" id="bulk-sonarr-note">
+                            Solo serie con TVDB non presenti in Sonarr.
+                        </p>
+                        <div class="mb-3">
+                            <label class="form-label">Root folder</label>
+                            <select class="form-select form-select-sm" id="bulk-sonarr-root">
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label">Quality profile</label>
+                            <select class="form-select form-select-sm" id="bulk-sonarr-profile">
+                                <option value="">Caricamento...</option>
+                            </select>
+                        </div>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="bulk-sonarr-search-enable">
+                            <label class="form-check-label" for="bulk-sonarr-search-enable">Avvia ricerca su Sonarr</label>
+                        </div>
+                        <div class="alert alert-info d-none" id="bulk-sonarr-status">Invio a Sonarr in corso...</div>
+                        <div class="alert alert-danger d-none" id="bulk-sonarr-error">Errore durante il caricamento.</div>
+                    </div>
+
+                    <div class="modal-footer border-0">
+                        <button class="btn btn-light"
+                                data-bs-dismiss="modal">
+                            Annulla
+                        </button>
+                        <button type="button"
+                                class="btn btn-primary d-inline-flex align-items-center gap-1"
+                                id="bulk-sonarr-confirm">
                             <i class="bi bi-cloud-download"></i>
                             Invia
                         </button>

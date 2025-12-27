@@ -45,6 +45,13 @@ def sonarr_list():
     })
 
 
+@bp.route("/api/sonarr/options")
+def sonarr_options():
+    roots = sonarr_api.sonarr_get_root_folders(db)
+    profiles = sonarr_api.sonarr_get_quality_profiles(db)
+    return jsonify({"root_folders": roots, "profiles": profiles})
+
+
 @bp.route("/api/sonarr/sync/preview")
 def sonarr_sync_preview():
     series = sonarr_api.sonarr_get_all_series(db)

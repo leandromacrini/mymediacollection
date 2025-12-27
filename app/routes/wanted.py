@@ -31,16 +31,29 @@ def wanted_content():
     radarr_url = radarr_api.radarr_get_client(db)["url"]
     radarr_movies = radarr_api.radarr_get_all_movies(db)
     radarr_tmdb = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id}
+    sonarr_url = sonarr_api.sonarr_get_client(db)["url"]
+    sonarr_series = sonarr_api.sonarr_get_all_series(db)
+    sonarr_tvdb = {str(s.tvdb_id) for s in sonarr_series if s.tvdb_id}
+    sonarr_slug_map = {str(s.tvdb_id): s.slug for s in sonarr_series if s.tvdb_id and s.slug}
     radarr_cfg = db.get_service_config("Radarr")
+    sonarr_cfg = db.get_service_config("Sonarr")
     return render_template(
         "partials/wanted_content.html",
         items=wanted_list,
         radarr_tmdb=radarr_tmdb,
+        sonarr_url=sonarr_url,
+        sonarr_tvdb=sonarr_tvdb,
+        sonarr_slug_map=sonarr_slug_map,
         radarr_url=radarr_url,
         radarr_defaults={
             "root_folder": radarr_cfg.get("radarr_root_folder"),
             "profile_id": radarr_cfg.get("radarr_profile_id"),
             "enable_search": radarr_cfg.get("radarr_enable_search")
+        },
+        sonarr_defaults={
+            "root_folder": sonarr_cfg.get("sonarr_root_folder"),
+            "profile_id": sonarr_cfg.get("sonarr_profile_id"),
+            "enable_search": sonarr_cfg.get("sonarr_enable_search")
         }
     )
 
@@ -266,6 +279,49 @@ def wanted_add_radarr(media_item_id):
     return jsonify({"ok": False, "error": "radarr_add_failed"}), 500
 
 
+@bp.route("/api/wanted/<int:media_item_id>/sonarr/add", methods=["POST"])
+def wanted_add_sonarr(media_item_id):
+    item = db.get_media_item(media_item_id)
+    if not item or item.media_type != "series":
+        return jsonify({"ok": False, "error": "invalid_item"}), 400
+
+    tvdb_id = item.external_ids.get("tvdb")
+    if not tvdb_id:
+        return jsonify({"ok": False, "error": "missing_tvdb"}), 400
+
+    data = request.get_json(silent=True) or {}
+    root_folder = data.get("root_folder")
+    profile_id = data.get("profile_id")
+    enable_search = data.get("enable_search")
+    if not root_folder or not profile_id:
+        return jsonify({"ok": False, "error": "missing_options"}), 400
+
+    existing = sonarr_api.sonarr_get_by_tvdb(int(tvdb_id), db)
+    if existing:
+        db.add_external_id(media_item_id, "sonarr", str(tvdb_id))
+        return jsonify({"ok": True, "status": "exists"})
+
+    sonarr_item = sonarr_api.SonarrMedia(
+        title=item.title,
+        year=item.year,
+        tvdb_id=int(tvdb_id),
+        imdb_id=item.external_ids.get("imdb"),
+        root_folder=root_folder,
+        monitored=True
+    )
+    added = sonarr_api.sonarr_add_series(
+        sonarr_item,
+        profile_id=int(profile_id),
+        root_folder=root_folder,
+        enable_search=bool(enable_search),
+        db=db
+    )
+    if added:
+        db.add_external_id(media_item_id, "sonarr", str(tvdb_id))
+        return jsonify({"ok": True, "status": "added"})
+    return jsonify({"ok": False, "error": "sonarr_add_failed"}), 500
+
+
 @bp.route("/api/wanted/radarr/bulk_add", methods=["POST"])
 def wanted_bulk_add_radarr():
     data = request.get_json(silent=True) or {}
@@ -326,6 +382,83 @@ def wanted_bulk_add_radarr():
         if ok:
             db.add_external_id(media_id, "radarr", str(tmdb_id))
             existing_tmdb.add(str(tmdb_id))
+            added += 1
+            added_ids.append(media_id)
+        else:
+            errors += 1
+            error_ids.append(media_id)
+
+    return jsonify({
+        "ok": True,
+        "added": added,
+        "skipped": skipped,
+        "errors": errors,
+        "added_ids": added_ids,
+        "skipped_ids": skipped_ids,
+        "error_ids": error_ids
+    })
+
+
+@bp.route("/api/wanted/sonarr/bulk_add", methods=["POST"])
+def wanted_bulk_add_sonarr():
+    data = request.get_json(silent=True) or {}
+    media_ids = data.get("media_ids") or []
+    root_folder = data.get("root_folder")
+    profile_id = data.get("profile_id")
+    enable_search = data.get("enable_search")
+    if not media_ids or not root_folder or not profile_id:
+        return jsonify({"ok": False, "error": "missing_parameters"}), 400
+
+    sonarr_series = sonarr_api.sonarr_get_all_series(db)
+    existing_tvdb = {str(s.tvdb_id) for s in sonarr_series if s.tvdb_id}
+
+    added = 0
+    skipped = 0
+    errors = 0
+    added_ids = []
+    skipped_ids = []
+    error_ids = []
+    for media_id in media_ids:
+        try:
+            media_id = int(media_id)
+        except (TypeError, ValueError):
+            skipped += 1
+            continue
+
+        item = db.get_media_item(media_id)
+        if not item or item.media_type != "series":
+            skipped += 1
+            continue
+
+        tvdb_id = item.external_ids.get("tvdb")
+        if not tvdb_id:
+            skipped += 1
+            continue
+
+        if str(tvdb_id) in existing_tvdb:
+            db.add_external_id(media_id, "sonarr", str(tvdb_id))
+            skipped += 1
+            skipped_ids.append(media_id)
+            continue
+
+        sonarr_item = sonarr_api.SonarrMedia(
+            title=item.title,
+            year=item.year,
+            tvdb_id=int(tvdb_id),
+            imdb_id=item.external_ids.get("imdb"),
+            root_folder=root_folder,
+            monitored=True
+        )
+        ok = sonarr_api.sonarr_add_series(
+            sonarr_item,
+            profile_id=int(profile_id),
+            root_folder=root_folder,
+            enable_search=bool(enable_search),
+            db=db
+        )
+        if ok:
+            db.add_external_id(media_id, "sonarr", str(tvdb_id))
+            existing_tvdb.add(str(tvdb_id))
             added += 1
             added_ids.append(media_id)
         else:

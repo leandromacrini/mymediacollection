@@ -31,6 +31,43 @@
     .badge-tmdb { background: #01b4e4; color: #06202a; }
     .badge-anilist { background: #02a9ff; color: #06283d; }
     .badge-radarr { background: #f6a000; color: #2b1a00; }
+    .badge-sonarr { background: #3b82f6; color: #0b1a3a; }
+    .btn-imdb {
+        background: #f5c518;
+        border-color: #f5c518;
+        color: #111;
+    }
+    .btn-tmdb {
+        background: #01b4e4;
+        border-color: #01b4e4;
+        color: #06202a;
+    }
+    .btn-anilist {
+        background: #02a9ff;
+        border-color: #02a9ff;
+        color: #06283d;
+    }
+    .btn-radarr {
+        background: #f6a000;
+        border-color: #f6a000;
+        color: #2b1a00;
+    }
+    .btn-sonarr {
+        background: #3b82f6;
+        border-color: #3b82f6;
+        color: #0b1a3a;
+    }
+    .wanted-actions .btn:disabled,
+    #bulk-radarr-btn:disabled,
+    #bulk-sonarr-btn:disabled,
+    #bulk-merge-btn:disabled,
+    #bulk-delete-btn:disabled {
+        background: #e9ecef;
+        color: #6c757d;
+        border-color: transparent;
+        opacity: 1;
+        box-shadow: none;
+    }
     .wanted-skeleton {
         display: grid;
         gap: 10px;
@@ -84,6 +121,10 @@
     <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-radarr-btn" data-bs-toggle="modal" data-bs-target="#bulkRadarrModal" disabled>
         <i class="bi bi-cloud-download"></i>
         Invia a Radarr
+    </button>
+    <button type="button" class="btn btn-sm btn-sonarr" id="bulk-sonarr-btn" data-bs-toggle="modal" data-bs-target="#bulkSonarrModal" disabled>
+        <i class="bi bi-cloud-download"></i>
+        Invia a Sonarr
     </button>
     <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-merge-btn" data-bs-toggle="modal" data-bs-target="#mergeWantedModal" disabled>
         <i class="bi bi-diagram-3"></i>
@@ -157,8 +198,11 @@ function initWantedUI() {
             mediaType: $row.data('media-type'),
             category: $row.data('category') || '',
             hasTmdb: $row.data('has-tmdb') === 1 || $row.data('has-tmdb') === '1',
+            hasTvdb: $row.data('has-tvdb') === 1 || $row.data('has-tvdb') === '1',
             tmdbId: $row.data('tmdb-id') || '',
+            tvdbId: $row.data('tvdb-id') || '',
             inRadarr: $row.data('in-radarr') === 1 || $row.data('in-radarr') === '1',
+            inSonarr: $row.data('in-sonarr') === 1 || $row.data('in-sonarr') === '1',
             missingExternal: $row.data('missing-external') === 1 || $row.data('missing-external') === '1',
             title: $row.find('.wanted-title').text().trim()
         };
@@ -201,6 +245,27 @@ function initWantedUI() {
         updateBulkState();
     }
 
+    function updateRowInSonarr(mediaId) {
+        var $row = rowById[mediaId] ? $(rowById[mediaId]) : $('.wanted-select[value="' + mediaId + '"]').closest('tr');
+        if (!$row.length) {
+            return;
+        }
+        $row.attr('data-in-sonarr', '1');
+        $row.data('in-sonarr', '1');
+        var tvdbId = $row.data('tvdb-id');
+        var idCell = $row.find('td').eq(4);
+        if (tvdbId && !idCell.find('.badge-sonarr').length) {
+            idCell.append('<span class="badge badge-sonarr">Sonarr</span>');
+        }
+        $row.find('.sonarr-add-btn').prop('disabled', true);
+        var info = getRowInfo(mediaId);
+        if (info) {
+            info.inSonarr = true;
+        }
+        table.draw(false);
+        updateBulkState();
+    }
+
     function removeRowsByIds(ids) {
         ids.forEach(function(id) {
             var $row = rowById[id] ? $(rowById[id]) : $('.wanted-select[value="' + id + '"]').closest('tr');
@@ -232,20 +297,38 @@ function initWantedUI() {
         });
     }
 
+    function getSonarrEligibleIds() {
+        return Array.from(selectedIds).filter(function(id) {
+            var info = getRowInfo(id);
+            if (!info) {
+                return false;
+            }
+            return info.mediaType === 'series' && info.hasTvdb && !info.inSonarr;
+        });
+    }
+
     function updateBulkState() {
         var count = selectedIds.size;
         var eligible = getRadarrEligibleIds();
+        var eligibleSonarr = getSonarrEligibleIds();
         var excluded = count - eligible.length;
         $('#bulk-delete-btn').prop('disabled', count === 0);
         $('#bulk-delete-confirm').prop('disabled', count === 0);
         $('#bulk-delete-count').text(count);
         $('#bulk-radarr-btn').prop('disabled', eligible.length === 0);
         $('#bulk-radarr-count').text(eligible.length);
+        $('#bulk-sonarr-btn').prop('disabled', eligibleSonarr.length === 0);
+        $('#bulk-sonarr-count').text(eligibleSonarr.length);
         $('#bulk-merge-btn').prop('disabled', count === 0);
         if (count === 0) {
             $('#bulk-radarr-note').text('Solo movie con TMDB non presenti in Radarr.');
         } else {
             $('#bulk-radarr-note').text('Inviabili: ' + eligible.length + '. Esclusi: ' + excluded + '.');
+        }
+        if (count === 0) {
+            $('#bulk-sonarr-note').text('Solo serie con TVDB non presenti in Sonarr.');
+        } else {
+            $('#bulk-sonarr-note').text('Inviabili: ' + eligibleSonarr.length + '. Esclusi: ' + (count - eligibleSonarr.length) + '.');
         }
     }
 
@@ -334,6 +417,7 @@ function initWantedUI() {
 
     $('#bulkDeleteModal').on('show.bs.modal', updateBulkState);
     $('#bulkRadarrModal').on('show.bs.modal', updateBulkState);
+    $('#bulkSonarrModal').on('show.bs.modal', updateBulkState);
 
     function renderLookupResults(provider, items, listEl) {
         if (!items || !items.length) {
@@ -538,6 +622,7 @@ function initWantedUI() {
     });
 
     var radarrOptionsCache = null;
+    var sonarrOptionsCache = null;
 
     function populateRadarrSelect($select, items, labelKey, valueKey) {
         if (!items || !items.length) {
@@ -591,11 +676,70 @@ function initWantedUI() {
         }
     }
 
+    function populateSonarrSelect($select, items, labelKey, valueKey) {
+        if (!items || !items.length) {
+            $select.html('<option value="">Nessuna opzione disponibile</option>');
+            return;
+        }
+        var options = items.map(function(item) {
+            var value = item[valueKey] || item.id;
+            var label = item[labelKey] || item.path || item.name || item.id;
+            return '<option value="' + value + '">' + label + '</option>';
+        }).join('');
+        $select.html(options);
+    }
+
+    function applySonarrDefaults($rootSelect, $profileSelect) {
+        var defaultRoot = $('#sonarr-default-root').val();
+        var defaultProfile = $('#sonarr-default-profile').val();
+        var defaultSearch = $('#sonarr-default-search').val();
+        if (defaultRoot) {
+            $rootSelect.val(defaultRoot);
+        }
+        if (defaultProfile) {
+            $profileSelect.val(defaultProfile);
+        }
+        if (defaultSearch !== undefined) {
+            var enable = String(defaultSearch) === '1';
+            $('#sonarr-search-enable').prop('checked', enable);
+            $('#bulk-sonarr-search-enable').prop('checked', enable);
+        }
+    }
+
+    function loadSonarrOptions($rootSelect, $profileSelect, $errorEl) {
+        $errorEl.addClass('d-none');
+        if (sonarrOptionsCache) {
+            populateSonarrSelect($rootSelect, sonarrOptionsCache.root_folders, 'path', 'path');
+            populateSonarrSelect($profileSelect, sonarrOptionsCache.profiles, 'name', 'id');
+            applySonarrDefaults($rootSelect, $profileSelect);
+            return;
+        }
+        $rootSelect.html('<option value="">Caricamento...</option>');
+        $profileSelect.html('<option value="">Caricamento...</option>');
+        $.getJSON('/api/sonarr/options', function(resp) {
+            sonarrOptionsCache = resp || {};
+            populateSonarrSelect($rootSelect, sonarrOptionsCache.root_folders, 'path', 'path');
+            populateSonarrSelect($profileSelect, sonarrOptionsCache.profiles, 'name', 'id');
+            applySonarrDefaults($rootSelect, $profileSelect);
+        }).fail(function() {
+            $errorEl.removeClass('d-none').text('Errore nel caricamento delle opzioni Sonarr.');
+            $rootSelect.html('<option value="">Errore</option>');
+            $profileSelect.html('<option value="">Errore</option>');
+        });
+    }
+
     $(document).on('click', '.radarr-add-btn', function() {
         var mediaId = $(this).data('media-id');
         var title = $(this).data('title');
         $('#radarr-add-media-id').val(mediaId);
         $('#radarr-add-title').text('Seleziona root e profilo per: ' + title);
+    });
+
+    $(document).on('click', '.sonarr-add-btn', function() {
+        var mediaId = $(this).data('media-id');
+        var title = $(this).data('title');
+        $('#sonarr-add-media-id').val(mediaId);
+        $('#sonarr-add-title').text('Seleziona root e profilo per: ' + title);
     });
 
     $('#radarrAddModal').on('show.bs.modal', function() {
@@ -612,6 +756,20 @@ function initWantedUI() {
         applyRadarrDefaults($('#radarr-root-select'), $('#radarr-profile-select'));
     });
 
+    $('#sonarrAddModal').on('show.bs.modal', function() {
+        loadSonarrOptions(
+            $('#sonarr-root-select'),
+            $('#sonarr-profile-select'),
+            $('#sonarr-add-error')
+        );
+    });
+    $('#sonarrAddModal').on('hidden.bs.modal', function() {
+        $('#sonarr-add-error').addClass('d-none').text('Errore durante il caricamento.');
+        $('#sonarr-add-status').addClass('d-none').text('Invio a Sonarr in corso...');
+        $('#sonarr-add-confirm').prop('disabled', false).text('Invia');
+        applySonarrDefaults($('#sonarr-root-select'), $('#sonarr-profile-select'));
+    });
+
     $('#bulkRadarrModal').on('show.bs.modal', function() {
         loadRadarrOptions(
             $('#bulk-radarr-root'),
@@ -624,6 +782,20 @@ function initWantedUI() {
         $('#bulk-radarr-status').addClass('d-none').text('Invio a Radarr in corso...');
         $('#bulk-radarr-confirm').prop('disabled', false).text('Invia');
         applyRadarrDefaults($('#bulk-radarr-root'), $('#bulk-radarr-profile'));
+    });
+
+    $('#bulkSonarrModal').on('show.bs.modal', function() {
+        loadSonarrOptions(
+            $('#bulk-sonarr-root'),
+            $('#bulk-sonarr-profile'),
+            $('#bulk-sonarr-error')
+        );
+    });
+    $('#bulkSonarrModal').on('hidden.bs.modal', function() {
+        $('#bulk-sonarr-error').addClass('d-none').text('Errore durante il caricamento.');
+        $('#bulk-sonarr-status').addClass('d-none').text('Invio a Sonarr in corso...');
+        $('#bulk-sonarr-confirm').prop('disabled', false).text('Invia');
+        applySonarrDefaults($('#bulk-sonarr-root'), $('#bulk-sonarr-profile'));
     });
 
     $('#radarr-add-confirm').on('click', function() {
@@ -660,6 +832,43 @@ function initWantedUI() {
             button.prop('disabled', false).text('Invia');
             $('#radarr-add-status').addClass('d-none');
             $('#radarr-add-error').removeClass('d-none').text('Errore durante il push a Radarr.');
+        });
+    });
+
+    $('#sonarr-add-confirm').on('click', function() {
+        var button = $(this);
+        var mediaId = $('#sonarr-add-media-id').val();
+        var root = $('#sonarr-root-select').val();
+        var profile = $('#sonarr-profile-select').val();
+        var enableSearch = $('#sonarr-search-enable').is(':checked');
+        if (!mediaId || !root || !profile) {
+            $('#sonarr-add-error').removeClass('d-none').text('Seleziona root e profilo.');
+            return;
+        }
+        $('#sonarr-add-error').addClass('d-none');
+        $('#sonarr-add-status').removeClass('d-none').text('Invio a Sonarr in corso...');
+        button.prop('disabled', true).text('Invio...');
+        $.ajax({
+            url: '/api/wanted/' + mediaId + '/sonarr/add',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ root_folder: root, profile_id: profile, enable_search: enableSearch })
+        }).done(function() {
+            $('#sonarr-add-status').removeClass('d-none').text('Inviato a Sonarr. Aggiorno la lista...');
+            setTimeout(function() {
+                updateRowInSonarr(mediaId);
+                var modalEl = document.getElementById('sonarrAddModal');
+                if (modalEl) {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }
+            }, 900);
+        }).fail(function() {
+            button.prop('disabled', false).text('Invia');
+            $('#sonarr-add-status').addClass('d-none');
+            $('#sonarr-add-error').removeClass('d-none').text('Errore durante il push a Sonarr.');
         });
     });
 
@@ -706,6 +915,52 @@ function initWantedUI() {
             button.prop('disabled', false).text('Invia');
             $('#bulk-radarr-status').addClass('d-none');
             $('#bulk-radarr-error').removeClass('d-none').text('Errore durante il push bulk.');
+        });
+    });
+
+    $('#bulk-sonarr-confirm').on('click', function() {
+        var button = $(this);
+        var root = $('#bulk-sonarr-root').val();
+        var profile = $('#bulk-sonarr-profile').val();
+        var mediaIds = getSonarrEligibleIds();
+        var enableSearch = $('#bulk-sonarr-search-enable').is(':checked');
+        if (!mediaIds.length || !root || !profile) {
+            $('#bulk-sonarr-error').removeClass('d-none').text('Seleziona elementi, root e profilo.');
+            return;
+        }
+        $('#bulk-sonarr-error').addClass('d-none');
+        $('#bulk-sonarr-status').removeClass('d-none').text('Invio a Sonarr in corso...');
+        button.prop('disabled', true).text('Invio...');
+        $.ajax({
+            url: '/api/wanted/sonarr/bulk_add',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ media_ids: mediaIds, root_folder: root, profile_id: profile, enable_search: enableSearch })
+        }).done(function(resp) {
+            $('#bulk-sonarr-status').removeClass('d-none').text('Inviati a Sonarr. Aggiorno la lista...');
+            setTimeout(function() {
+                var updatedIds = [];
+                if (resp && resp.added_ids) {
+                    updatedIds = updatedIds.concat(resp.added_ids);
+                }
+                if (resp && resp.skipped_ids) {
+                    updatedIds = updatedIds.concat(resp.skipped_ids);
+                }
+                updatedIds.forEach(function(id) {
+                    updateRowInSonarr(id);
+                });
+                var modalEl = document.getElementById('bulkSonarrModal');
+                if (modalEl) {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }
+            }, 900);
+        }).fail(function() {
+            button.prop('disabled', false).text('Invia');
+            $('#bulk-sonarr-status').addClass('d-none');
+            $('#bulk-sonarr-error').removeClass('d-none').text('Errore durante il push bulk.');
         });
     });
 

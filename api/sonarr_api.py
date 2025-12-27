@@ -54,7 +54,7 @@ def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia
     for s in series_list:
         media = SonarrMedia(
             title=s.get("title"),
-            year=None,  # Sonarr non espone l'anno direttamente
+            year=s.get("year"),
             tvdb_id=s.get("tvdbId"),
             imdb_id=s.get("imdbId"),
             root_folder=s.get("rootFolderPath", cfg["root_folder"]),
