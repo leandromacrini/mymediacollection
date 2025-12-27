@@ -38,51 +38,27 @@
     <div class="col-md-2">
         <div class="card shadow-sm">
             <div class="card-body text-primary">
-                <h6>Downloading</h6>
-                <h3>{{ counts.downloading }}</h3>
+                <h6>Radarr</h6>
+                <h3>{{ radarr_info.total }}</h3>
+                <div class="small text-muted">Mon: {{ radarr_info.monitored }} · Scar: {{ radarr_info.downloaded }}</div>
             </div>
         </div>
     </div>
 
     <div class="col-md-2">
         <div class="card shadow-sm">
-            <div class="card-body text-danger">
-                <h6>Errors</h6>
-                <h3>{{ counts.errors }}</h3>
+            <div class="card-body text-info">
+                <h6>Sonarr</h6>
+                <h3>{{ sonarr_info.total }}</h3>
+                <div class="small text-muted">Mon: {{ sonarr_info.monitored }} · Non mon: {{ sonarr_info.unmonitored }}</div>
             </div>
         </div>
     </div>
+
 </div>
-
-<!-- DOWNLOADS + LAST IMPORTS -->
+<!-- LAST IMPORTS -->
 <div class="row mb-4">
-    <div class="col-md-6">
-        <h5>Active downloads</h5>
-        <table class="table table-sm table-striped">
-            <thead>
-                <tr>
-                    <th>Title</th>
-                    <th>Status</th>
-                    <th>Source</th>
-                    <th>Updated</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for d in downloads %}
-                <tr>
-                    <td>{{ d.title }} {% if d.year %}({{ d.year }}){% endif %}</td>
-                    <td>{{ d.status }}</td>
-                    <td>{{ d.source_name }}</td>
-                    <td>{{ d.updated_at }}</td>
-                </tr>
-                {% else %}
-                <tr><td colspan="4" class="text-muted">No active downloads</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="col-md-6">
+    <div class="col-12">
         <h5>Last imports</h5>
         <table class="table table-sm table-striped">
             <thead>

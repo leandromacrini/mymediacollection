@@ -20,14 +20,6 @@ class Media:
     status: Optional[str] = None
 
 
-@dataclass
-class MediaStatus:
-    id: Optional[int]
-    media_item_id: int
-    source: str
-    external_id: str
-    status: str
-
 class ServiceSetting:
     def __init__(self, id: int, service_id: int, key: str, label: str, value: str | None, value_type: str = "string", required: bool = False):
         self.id = id
@@ -157,15 +149,17 @@ class MediaDB:
             """, (media_item_id, source, external_id))
             return cur.rowcount > 0
 
-    def mark_as_wanted(self, media_item_id: int) -> bool:
+    def has_external_id(self, source: str, external_id: str) -> bool:
+        if not source or not external_id:
+            return False
         with self.conn.cursor() as cur:
             cur.execute("""
-                INSERT INTO processing_state (media_item_id, status)
-                VALUES (%s, 'pending')
-                ON CONFLICT (media_item_id)
-                DO UPDATE SET status='pending', updated_at=now()
-            """, (media_item_id,))
-            return cur.rowcount > 0
+                SELECT 1
+                FROM external_ids
+                WHERE source = %s AND external_id = %s
+                LIMIT 1
+            """, (source, external_id))
+            return cur.fetchone() is not None
 
     def delete_media_item(self, media_item_id: int) -> bool:
         with self.conn.cursor() as cur:
@@ -174,26 +168,14 @@ class MediaDB:
                 WHERE id = %s
             """, (media_item_id,))
             return cur.rowcount > 0
-
-    def get_pending_items(self):
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute("""
-                SELECT mi.*, ps.status, ps.last_step, ps.message
-                FROM media_items mi
-                LEFT JOIN processing_state ps ON ps.media_item_id = mi.id
-                WHERE ps.status='pending' OR ps.status IS NULL
-            """)
-            return cur.fetchall()
     
     def get_wanted_items(self, media_type:str | None = None, limit:int = 5) -> list[Media]:
         query = """
             SELECT
                 mi.*,
-                ps.status,
                 ei.source AS ext_source,
                 ei.external_id
             FROM media_items mi
-            LEFT JOIN processing_state ps ON ps.media_item_id = mi.id
             LEFT JOIN external_ids ei ON ei.media_item_id = mi.id
         """
         params = []
@@ -203,11 +185,11 @@ class MediaDB:
         
         query += " ORDER BY mi.created_at DESC\n"
 
-        if limit>0:
+        if limit is not None and limit > 0:
             query += " LIMIT %s"
             params.append(limit)
 
-        with self.conn.cursor() as cur:
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(query, params)
             rows = cur.fetchall()
 
@@ -226,7 +208,7 @@ class MediaDB:
                     source_ref=r["source_ref"],
                     original_title=r.get("original_title"),
                     language=r.get("language"),
-                    status=r["status"]
+                    status=None
                 )
 
             if r["ext_source"]:
@@ -234,36 +216,6 @@ class MediaDB:
 
         return list(items.values())
     
-    def get_media_status(self, source: Optional[str] = None) -> list[MediaStatus]:
-        query = """
-            SELECT
-                ps.media_item_id,
-                ei.source,
-                ei.external_id,
-                ps.status
-            FROM external_ids ei
-            JOIN processing_state ps ON ps.media_item_id = ei.media_item_id
-        """
-        params = []
-        if source:
-            query += " WHERE ei.source = %s"
-            params.append(source)
-
-        with self.conn.cursor() as cur:
-            cur.execute(query, params)
-            rows = cur.fetchall()
-
-        return [
-            MediaStatus(
-                media_item_id=row[0],
-                source=row[1],
-                external_id=row[2],
-                status=row[3]
-            )
-            for row in rows
-        ]
-
-
     def mark_as_processed(self, title, year, status="processed") -> bool:
         """
         Mark a media item as processed.
@@ -322,87 +274,6 @@ class MediaDB:
             """)
             return cur.fetchone()[0]
     
-    def count_downloading(self):
-        with self.conn.cursor() as cur:
-            cur.execute("""
-                SELECT COUNT(*)
-                FROM downloads
-                WHERE status IN ('queued', 'downloading')
-            """)
-            return cur.fetchone()[0]
-        
-    def count_failed(self):
-        with self.conn.cursor() as cur:
-            cur.execute("""
-                SELECT COUNT(*)
-                FROM processing_state
-                WHERE status = 'failed'
-            """)
-            return cur.fetchone()[0]
-    
-    def get_active_downloads(self, limit=10):
-        with self.conn.cursor() as cur:
-            cur.execute("""
-                SELECT mi.title, mi.year, d.status, s.name, d.updated_at
-                FROM downloads d
-                JOIN media_items mi ON mi.id = d.media_item_id
-                JOIN sources s ON s.id = d.source_id
-                WHERE d.status IN ('queued', 'downloading')
-                ORDER BY d.updated_at DESC
-                LIMIT %s
-            """, (limit,))
-            return cur.fetchall()
-
-    
-    def get_wanted_items(self, media_type: str | None = None, limit: int = 5) -> list[Media]:
-        query = """
-            SELECT
-                mi.*,
-                ps.status,
-                ei.source AS ext_source,
-                ei.external_id
-            FROM media_items mi
-            LEFT JOIN processing_state ps ON ps.media_item_id = mi.id
-            LEFT JOIN external_ids ei ON ei.media_item_id = mi.id
-        """
-        params = []
-
-        if media_type:
-            query += " WHERE mi.media_type = %s\n"   # nota lo spazio prima di WHERE
-            params.append(media_type)
-
-        query += " ORDER BY mi.created_at DESC\n"
-        query += " LIMIT %s"
-        params.append(limit)
-
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:  # <-- QUESTO
-            cur.execute(query, params)
-            rows = cur.fetchall()
-
-        items: dict[int, Media] = {}
-
-        for r in rows:  
-            mid = r["id"]
-            if mid not in items:
-                items[mid] = Media(
-                    id=mid,
-                    title=r["title"],
-                    year=r["year"],
-                    media_type=r["media_type"],
-                    category=r["category"],
-                    source=r["source"],
-                    source_ref=r["source_ref"],
-                    original_title=r.get("original_title"),
-                    language=r.get("language"),
-                    status=r["status"]
-                )
-
-            if r["ext_source"]:
-                items[mid].external_ids[r["ext_source"]] = r["external_id"]
-
-        return list(items.values())
-
-
     def get_last_imports(self, limit=5):
         return self.get_wanted_items(limit=limit)
 
@@ -410,11 +281,9 @@ class MediaDB:
         query = """
             SELECT
                 mi.*,
-                ps.status,
                 ei.source AS ext_source,
                 ei.external_id
             FROM media_items mi
-            LEFT JOIN processing_state ps ON ps.media_item_id = mi.id
             LEFT JOIN external_ids ei ON ei.media_item_id = mi.id
             WHERE mi.id = %s
         """
@@ -436,7 +305,7 @@ class MediaDB:
             source_ref=rows[0]["source_ref"],
             original_title=rows[0].get("original_title"),
             language=rows[0].get("language"),
-            status=rows[0]["status"]
+            status=None
         )
 
         for r in rows:
@@ -466,24 +335,6 @@ class MediaDB:
                 return 0
 
             cur.execute(
-                "SELECT 1 FROM processing_state WHERE media_item_id = %s",
-                (keep_id,)
-            )
-            keep_has_state = cur.fetchone() is not None
-
-            cur.execute(
-                """
-                SELECT status, last_step, message, updated_at
-                FROM processing_state
-                WHERE media_item_id = ANY(%s)
-                ORDER BY updated_at DESC NULLS LAST
-                LIMIT 1
-                """,
-                (merge_ids,)
-            )
-            best_state = cur.fetchone()
-
-            cur.execute(
                 """
                 INSERT INTO external_ids (media_item_id, source, external_id)
                 SELECT %s, source, external_id
@@ -498,32 +349,9 @@ class MediaDB:
                 (keep_id, merge_ids)
             )
             cur.execute(
-                "UPDATE downloads SET media_item_id = %s WHERE media_item_id = ANY(%s)",
-                (keep_id, merge_ids)
-            )
-            cur.execute(
                 "UPDATE matches SET media_item_id = %s WHERE media_item_id = ANY(%s)",
                 (keep_id, merge_ids)
             )
-
-            cur.execute(
-                "DELETE FROM processing_state WHERE media_item_id = ANY(%s)",
-                (merge_ids,)
-            )
-            if best_state and not keep_has_state:
-                cur.execute(
-                    """
-                    INSERT INTO processing_state (media_item_id, status, last_step, message, updated_at)
-                    VALUES (%s, %s, %s, %s, %s)
-                    """,
-                    (
-                        keep_id,
-                        best_state["status"],
-                        best_state["last_step"],
-                        best_state["message"],
-                        best_state["updated_at"]
-                    )
-                )
 
             cur.execute(
                 "DELETE FROM media_items WHERE id = ANY(%s)",
@@ -572,44 +400,6 @@ class MediaDB:
 
             return list(services_dict.values())
     
-    def getMediaStatus(self, source: str | None = None) -> list[MediaStatus]:
-        """
-        Recupera lo stato dei media per una o tutte le sorgenti.
-
-        :param source: nome sorgente (es. 'animeworld') o None per tutte
-        :return: lista di MediaStatus
-        """
-        query = """
-            SELECT
-                ps.media_item_id,
-                ei.source,
-                ei.external_id,
-                ps.status
-            FROM external_ids ei
-            JOIN processing_state ps ON ps.media_item_id = ei.media_item_id
-        """
-
-        params = []
-        if source:
-            query += " WHERE ei.source = %s"
-            params.append(source)
-
-        with self.conn.cursor() as cur:
-            cur.execute(query, params)
-            rows = cur.fetchall()
-
-        return [
-            MediaStatus(
-                id=i,
-                media_item_id=row[0],
-                source=row[1],
-                external_id=row[2],
-                status=row[3]
-            )
-            for i, row in enumerate(rows)
-        ]
-
-        
     def get_service_settings(self, service_name):
         with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("""

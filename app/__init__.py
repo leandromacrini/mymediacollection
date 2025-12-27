@@ -2,7 +2,7 @@ import os
 from flask import Flask
 
 from app.extensions import db
-from app.routes import animeworld, dashboard, imports, pending, plex, radarr, settings, sonarr, wanted
+from app.routes import animeworld, dashboard, imports, plex, radarr, settings, sonarr, wanted
 
 
 def create_app() -> Flask:
@@ -15,7 +15,6 @@ def create_app() -> Flask:
     app.register_blueprint(dashboard.bp)
     app.register_blueprint(radarr.bp)
     app.register_blueprint(sonarr.bp)
-    app.register_blueprint(pending.bp)
     app.register_blueprint(wanted.bp)
     app.register_blueprint(settings.bp)
     app.register_blueprint(imports.bp)

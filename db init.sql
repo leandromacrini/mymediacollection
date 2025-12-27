@@ -18,7 +18,7 @@ CREATE USER mmc_user WITH PASSWORD 'CHANGE_ME';
 -- Grant all privileges on the database to the user
 GRANT ALL PRIVILEGES ON DATABASE my_media_collection TO mmc_user;
 
--- 1️⃣ Main table for media items
+-- 1) Main table for media items
 CREATE TABLE IF NOT EXISTS media_items (
     id SERIAL PRIMARY KEY,
     title TEXT NOT NULL,
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS media_items (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_media_items_title_year 
     ON media_items(title, year);
 
--- 2️⃣ Table for original media files
+-- 2) Table for original media files
 CREATE TABLE IF NOT EXISTS media_files (
     id SERIAL PRIMARY KEY,
     media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS media_files (
     UNIQUE(original_path)
 );
 
--- 3️⃣ External IDs (Radarr/Sonarr/TMDB/IMDB)
+-- 3) External IDs (Radarr/Sonarr/TMDB/IMDB)
 CREATE TABLE IF NOT EXISTS external_ids (
     id SERIAL PRIMARY KEY,
     media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -54,16 +54,7 @@ CREATE TABLE IF NOT EXISTS external_ids (
     external_id TEXT NOT NULL
 );
 
--- 4️⃣ Processing state of each media item
-CREATE TABLE IF NOT EXISTS processing_state (
-    media_item_id INT PRIMARY KEY REFERENCES media_items(id) ON DELETE CASCADE,
-    status TEXT NOT NULL,             -- pending | matched | added | downloading | completed | failed | skipped
-    last_step TEXT,                   -- radarr_lookup | manual_choice | download
-    message TEXT,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- 5️⃣ Matching decisions
+-- 4) Matching decisions
 CREATE TABLE IF NOT EXISTS matches (
     id SERIAL PRIMARY KEY,
     media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -75,44 +66,10 @@ CREATE TABLE IF NOT EXISTS matches (
     chosen_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- 6️⃣ Sources for downloads
-CREATE TABLE IF NOT EXISTS sources (
-    id SERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    type TEXT NOT NULL,                   -- torrent | ed2k | ddl | streaming
-    base_url TEXT,
-    enabled BOOLEAN DEFAULT TRUE
-);
-
--- 7️⃣ Actual download attempts
-CREATE TABLE IF NOT EXISTS downloads (
-    id SERIAL PRIMARY KEY,
-    media_item_id INT NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
-    source_id INT NOT NULL REFERENCES sources(id) ON DELETE CASCADE,
-    external_ref TEXT,                     -- magnet, ed2k, url
-    status TEXT,                           -- queued | downloading | stalled | done | failed
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
 -- Useful indexes
-CREATE INDEX IF NOT EXISTS idx_downloads_media ON downloads(media_item_id);
-CREATE INDEX IF NOT EXISTS idx_downloads_source ON downloads(source_id);
 CREATE INDEX IF NOT EXISTS idx_external_ids_media ON external_ids(media_item_id);
 
 -- Dashboard indexes
-CREATE INDEX IF NOT EXISTS idx_processing_state_status
-ON processing_state(status);
-
-CREATE INDEX IF NOT EXISTS idx_processing_state_media
-ON processing_state(media_item_id);
-
-CREATE INDEX IF NOT EXISTS idx_downloads_status_updated
-ON downloads(status, updated_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_downloads_media_item
-ON downloads(media_item_id);
-
 CREATE INDEX IF NOT EXISTS idx_media_items_created_at
 ON media_items(created_at DESC);
 
@@ -121,9 +78,6 @@ ON media_items(media_type);
 
 CREATE INDEX IF NOT EXISTS idx_external_ids_lookup
 ON external_ids(source, external_id);
-
-CREATE INDEX IF NOT EXISTS idx_processing_state_status_media
-ON processing_state(status, media_item_id);
 
 CREATE INDEX IF NOT EXISTS idx_media_items_title_year_notnull
 ON media_items(title, year)
@@ -250,7 +204,6 @@ ON CONFLICT (service_id, key) DO NOTHING;
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
 SELECT id, 'emule_enabled', 'Abilita Emule', 'true', 'boolean', TRUE FROM services WHERE name='Emule'
 ON CONFLICT (service_id, key) DO NOTHING;
-
 
 CREATE INDEX IF NOT EXISTS idx_service_settings_service
 ON service_settings(service_id);

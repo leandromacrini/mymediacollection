@@ -35,6 +35,21 @@ function initWantedUI() {
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
 
+    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+        if (settings.nTable.id !== 'wanted_table') {
+            return true;
+        }
+        if (wantedTypeFilter === 'all') {
+            return true;
+        }
+        var node = table.row(dataIndex).node();
+        if (!node) {
+            return true;
+        }
+        var mediaType = $(node).data('media-type');
+        return mediaType === wantedTypeFilter;
+    });
+
     function getRowInfo(id) {
         if (!id) {
             return null;
@@ -186,9 +201,7 @@ function initWantedUI() {
     }
 
     function applyFilters() {
-        var typeFilter = wantedTypeFilter === 'all' ? '' : wantedTypeFilter;
         table.column(1).search(wantedSearchTerm || '');
-        table.column(3).search(typeFilter, true, false);
         table.draw();
         updateBulkState();
     }
