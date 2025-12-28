@@ -180,6 +180,7 @@ function initWantedUI() {
         var eligible = getRadarrEligibleIds();
         var eligibleSonarr = getSonarrEligibleIds();
         var excluded = count - eligible.length;
+        $('#wanted-count-selected').text(count);
         $('#bulk-delete-btn').prop('disabled', count === 0);
         $('#bulk-delete-confirm').prop('disabled', count === 0);
         $('#bulk-delete-count').text(count);

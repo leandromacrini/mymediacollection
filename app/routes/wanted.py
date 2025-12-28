@@ -301,14 +301,16 @@ def wanted_add_sonarr(media_item_id):
         db.add_external_id(media_item_id, "sonarr", str(tvdb_id))
         return jsonify({"ok": True, "status": "exists"})
 
-    sonarr_item = sonarr_api.SonarrMedia(
-        title=item.title,
-        year=item.year,
-        tvdb_id=int(tvdb_id),
-        imdb_id=item.external_ids.get("imdb"),
-        root_folder=root_folder,
-        monitored=True
-    )
+    sonarr_item = sonarr_api.sonarr_lookup_by_tvdb(int(tvdb_id), db)
+    if not sonarr_item:
+        sonarr_item = sonarr_api.SonarrMedia(
+            title=item.title,
+            year=item.year,
+            tvdb_id=int(tvdb_id),
+            imdb_id=item.external_ids.get("imdb"),
+            root_folder=root_folder,
+            monitored=True
+        )
     added = sonarr_api.sonarr_add_series(
         sonarr_item,
         profile_id=int(profile_id),
@@ -441,14 +443,16 @@ def wanted_bulk_add_sonarr():
             skipped_ids.append(media_id)
             continue
 
-        sonarr_item = sonarr_api.SonarrMedia(
-            title=item.title,
-            year=item.year,
-            tvdb_id=int(tvdb_id),
-            imdb_id=item.external_ids.get("imdb"),
-            root_folder=root_folder,
-            monitored=True
-        )
+        sonarr_item = sonarr_api.sonarr_lookup_by_tvdb(int(tvdb_id), db)
+        if not sonarr_item:
+            sonarr_item = sonarr_api.SonarrMedia(
+                title=item.title,
+                year=item.year,
+                tvdb_id=int(tvdb_id),
+                imdb_id=item.external_ids.get("imdb"),
+                root_folder=root_folder,
+                monitored=True
+            )
         ok = sonarr_api.sonarr_add_series(
             sonarr_item,
             profile_id=int(profile_id),

@@ -63,7 +63,7 @@ $(document).ready(function() {
     function renderSonarrSyncRows(items) {
         var rows = items.map(function(item, idx) {
             var tvdb = item.tvdb_id ? String(item.tvdb_id) : '';
-            var match = item.match_type === 'tvdb' ? 'TVDB' : (item.match_type === 'title_year' ? 'Titolo/Anno' : '-');
+            var match = item.match_type === 'tvdb' ? 'TVDB' : '-';
             var label = item.title || '';
             return '<tr>' +
                 '<td><input class="form-check-input sonarr-sync-select" type="checkbox" data-index="' + idx + '" checked></td>' +

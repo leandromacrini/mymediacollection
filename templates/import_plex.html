@@ -8,9 +8,33 @@
 <h2><i class="bi bi-database me-2"></i>Plex Import</h2>
 
 {% if not preview %}
-<form method="post" enctype="multipart/form-data" class="mb-4" id="plex-preview-form">
+<form method="post" enctype="multipart/form-data" class="mt-3 mb-4" id="plex-preview-form">
     <input type="hidden" name="action" value="preview">
     <input type="file" name="file" accept=".db" required>
+    <div class="d-flex flex-wrap gap-4 mt-3">
+        <div class="d-flex flex-column gap-2">
+            <div class="fw-semibold">Film</div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="import-movies" name="import_movies" value="1" checked>
+                <label class="form-check-label" for="import-movies">Importa film</label>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="match-movies" name="match_movies" value="1" checked>
+                <label class="form-check-label" for="match-movies">Match TMDB per film (Radarr)</label>
+            </div>
+        </div>
+        <div class="d-flex flex-column gap-2">
+            <div class="fw-semibold">Serie</div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="import-series" name="import_series" value="1" checked>
+                <label class="form-check-label" for="import-series">Importa serie</label>
+            </div>
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="match-series" name="match_series" value="1" checked>
+                <label class="form-check-label" for="match-series">Match TVDB per serie (Sonarr)</label>
+            </div>
+        </div>
+    </div>
     <button type="submit" class="btn btn-primary">Analizza DB</button>
 </form>
 {% endif %}
@@ -19,6 +43,10 @@
 <form method="post">
     <input type="hidden" name="action" value="import">
     <input type="hidden" name="filepath" value="{{ preview.filepath }}">
+    <input type="hidden" name="match_movies" value="{{ '1' if preview.options.match_movies else '0' }}">
+    <input type="hidden" name="match_series" value="{{ '1' if preview.options.match_series else '0' }}">
+    <input type="hidden" name="import_movies" value="{{ '1' if preview.options.import_movies else '0' }}">
+    <input type="hidden" name="import_series" value="{{ '1' if preview.options.import_series else '0' }}">
 
     <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
         <span class="badge bg-primary">Film: {{ preview.movies|length }}</span>
@@ -52,12 +80,22 @@
                     </tr>
                 </thead>
                 <tbody>
-                {% for ex in preview.excluded %}
+                {% for ex in preview.excluded|sort(attribute='title') %}
                     <tr>
                         <td>{{ ex.title }}</td>
                         <td>{{ ex.year }}</td>
                         <td>{{ ex.media_type }}</td>
-                        <td class="text-muted">{{ ex.reason }}</td>
+                        <td class="text-muted">
+                            {{ ex.reason }}
+                            {% if ex.matches %}
+                                <div class="small text-muted mt-1">
+                                    Wanted:
+                                    {% for m in ex.matches %}
+                                        #{{ m.id }} {{ m.title }}{% if m.year %} ({{ m.year }}){% endif %}{% if m.media_type %} - {{ m.media_type }}{% endif %}{% if m.category %} - {{ m.category }}{% endif %}{% if not loop.last %}, {% endif %}
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
+                        </td>
                     </tr>
                 {% endfor %}
                 </tbody>
@@ -92,6 +130,7 @@
         </div>
     </div>
 
+    {% if preview.options.import_movies %}
     <div class="mb-4">
         <h5>Film <small class="text-muted">(<span id="selected-movies">0</span> selezionati)</small></h5>
         <div class="table-responsive">
@@ -102,29 +141,39 @@
                         <th class="sortable" data-sort-key="title">Titolo</th>
                         <th class="sortable" data-sort-key="year">Anno</th>
                         <th class="sortable" data-sort-key="tmdb">TMDB</th>
+                        <th>Usa match</th>
                         <th class="sortable" data-sort-key="type">Tipo</th>
                         <th class="sortable" data-sort-key="path">Percorso</th>
                     </tr>
                 </thead>
                 <tbody>
-                {% for pm in preview.movies %}
+                {% for pm in preview.movies|sort(attribute='title') %}
                     <tr class="plex-row" data-title="{{ pm.title|lower }}" data-type="movie" data-year="{{ pm.year or 0 }}" data-path="{{ pm.file_path|lower }}" data-tmdb="{{ pm.tmdb_title|lower if pm.tmdb_title else '' }}">
                         <td>
                             <input class="form-check-input plex-select plex-movie" type="checkbox" name="plex_guid" value="{{ pm.guid }}" checked>
-                            <input type="hidden" name="tmdb_match" value="{{ pm.guid }}|{{ pm.tmdb_id or '' }}|{{ '1' if pm.tmdb_confident else '0' }}">
                         </td>
                         <td>{{ pm.title }}</td>
                         <td>{{ pm.year }}</td>
                         <td>
                             {% if pm.tmdb_id %}
-                                <span class="badge {{ 'bg-success' if pm.tmdb_confident else 'bg-warning text-dark' }}">
+                                <a class="badge {{ 'bg-success' if pm.tmdb_confident else 'bg-warning text-dark' }} text-decoration-none"
+                                   href="https://www.themoviedb.org/movie/{{ pm.tmdb_id }}"
+                                   target="_blank"
+                                   rel="noopener">
                                     {{ pm.tmdb_title }}{% if pm.tmdb_year %} ({{ pm.tmdb_year }}){% endif %}
-                                </span>
+                                </a>
                                 {% if pm.tmdb_score %}
                                     <div class="text-muted small">Score {{ pm.tmdb_score }}</div>
                                 {% endif %}
                             {% else %}
                                 <span class="text-muted">Nessun match</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if pm.tmdb_id %}
+                                <input class="form-check-input" type="checkbox" name="tmdb_confirm" value="{{ pm.guid }}|{{ pm.tmdb_id }}" {% if pm.tmdb_confident %}checked{% endif %}>
+                            {% else %}
+                                <span class="text-muted">-</span>
                             {% endif %}
                         </td>
                         <td>Film</td>
@@ -135,7 +184,9 @@
             </table>
         </div>
     </div>
+    {% endif %}
 
+    {% if preview.options.import_series %}
     <div class="mb-4">
         <h5>Serie <small class="text-muted">(<span id="selected-series">0</span> selezionate)</small></h5>
         <div class="table-responsive">
@@ -145,18 +196,42 @@
                         <th style="width: 36px;"></th>
                         <th class="sortable" data-sort-key="title">Titolo</th>
                         <th class="sortable" data-sort-key="year">Anno</th>
+                        <th class="sortable" data-sort-key="tvdb">TVDB</th>
+                        <th>Usa match</th>
                         <th class="sortable" data-sort-key="type">Tipo</th>
                         <th class="sortable" data-sort-key="path">Percorso</th>
                     </tr>
                 </thead>
                 <tbody>
-                {% for pm in preview.series %}
-                    <tr class="plex-row" data-title="{{ pm.title|lower }}" data-type="series" data-year="{{ pm.year or 0 }}" data-path="{{ pm.file_path|lower }}">
+                {% for pm in preview.series|sort(attribute='title') %}
+                    <tr class="plex-row" data-title="{{ pm.title|lower }}" data-type="series" data-year="{{ pm.year or 0 }}" data-path="{{ pm.file_path|lower }}" data-tvdb="{{ pm.tvdb_title|lower if pm.tvdb_title else '' }}">
                         <td>
                             <input class="form-check-input plex-select plex-series" type="checkbox" name="plex_guid" value="{{ pm.guid }}" checked>
                         </td>
                         <td>{{ pm.title }}</td>
                         <td>{{ pm.year }}</td>
+                        <td>
+                            {% if pm.tvdb_id %}
+                                <a class="badge {{ 'bg-success' if pm.tvdb_confident else 'bg-warning text-dark' }} text-decoration-none"
+                                   href="https://thetvdb.com/?tab=series&id={{ pm.tvdb_id }}"
+                                   target="_blank"
+                                   rel="noopener">
+                                    {{ pm.tvdb_title }}{% if pm.tvdb_year %} ({{ pm.tvdb_year }}){% endif %}
+                                </a>
+                                {% if pm.tvdb_score %}
+                                    <div class="text-muted small">Score {{ pm.tvdb_score }}</div>
+                                {% endif %}
+                            {% else %}
+                                <span class="text-muted">Nessun match</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if pm.tvdb_id %}
+                                <input class="form-check-input" type="checkbox" name="tvdb_confirm" value="{{ pm.guid }}|{{ pm.tvdb_id }}" {% if pm.tvdb_confident %}checked{% endif %}>
+                            {% else %}
+                                <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
                         <td>Serie</td>
                         <td class="text-muted small">{{ pm.file_path }}</td>
                     </tr>
@@ -165,6 +240,7 @@
             </table>
         </div>
     </div>
+    {% endif %}
 </form>
 
 {% endif %}

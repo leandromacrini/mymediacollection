@@ -7,6 +7,7 @@ from flask import Blueprint, render_template
 
 from api import radarr_api
 from api import plex_db_api
+from api import sonarr_api
 from app.extensions import db
 from app.utils import allowed_file, get_uploaded_file, save_uploaded_file
 from core.db_core import Media
@@ -22,6 +23,12 @@ def _normalize_title(title: str) -> str:
 
 def _tmdb_score(query: str, candidate: str) -> float:
     return SequenceMatcher(None, _normalize_title(query), _normalize_title(candidate)).ratio()
+
+def _tvdb_score(query: str, candidate: str) -> float:
+    return SequenceMatcher(None, _normalize_title(query), _normalize_title(candidate)).ratio()
+
+def _title_year_key(title: str | None, year: int | None) -> tuple[str, int | None]:
+    return (_normalize_title(title or ""), year)
 
 
 def _radarr_find_best(title: str, year: int | None) -> dict | None:
@@ -53,6 +60,37 @@ def _radarr_find_best(title: str, year: int | None) -> dict | None:
         "tmdb_confident": confident
     }
 
+def _sonarr_find_best(title: str, year: int | None) -> dict | None:
+    try:
+        results = sonarr_api.sonarr_lookup(title, db)
+    except Exception as exc:
+        print(f"Error looking up Sonarr for '{title}': {exc}")
+        return None
+    if not results:
+        return None
+
+    best = None
+    best_score = 0.0
+    for item in results:
+        candidate_title = item.title or ""
+        score = _tvdb_score(title, candidate_title)
+        if score > best_score:
+            best_score = score
+            best = item
+
+    if not best:
+        return None
+
+    year_ok = not year or (best.year and abs(best.year - year) <= 1)
+    confident = best_score >= 0.9 and year_ok
+    return {
+        "tvdb_id": best.tvdb_id,
+        "tvdb_title": best.title,
+        "tvdb_year": best.year,
+        "tvdb_score": round(best_score, 3),
+        "tvdb_confident": confident
+    }
+
 
 def _wanted_key(title: str, year: int | None) -> tuple[str, int | None]:
     return ((title or "").strip().lower(), year)
@@ -62,52 +100,144 @@ def _get_wanted_keys() -> set[tuple[str, int | None]]:
     wanted = db.get_wanted_items(limit=1000000)
     return {_wanted_key(item.title, item.year) for item in wanted if item.title}
 
+def _get_wanted_index() -> dict[tuple[str, int | None], list[dict]]:
+    wanted = db.get_wanted_items(limit=1000000)
+    index: dict[tuple[str, int | None], list[dict]] = {}
+    for item in wanted:
+        if not item.title:
+            continue
+        key = _wanted_key(item.title, item.year)
+        index.setdefault(key, []).append({
+            "id": item.id,
+            "title": item.title,
+            "year": item.year,
+            "media_type": item.media_type,
+            "category": item.category
+        })
+    return index
+def _parse_bool(value: str | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
 
-def _build_preview(filepath: str) -> dict:
-    wanted_keys = _get_wanted_keys()
+
+def _build_preview(
+    filepath: str,
+    import_movies: bool,
+    import_series: bool,
+    match_movies: bool,
+    match_series: bool,
+    skip_radarr: bool,
+    skip_sonarr: bool
+) -> dict:
+    wanted_index = _get_wanted_index()
+    wanted_keys = set(wanted_index.keys())
+    radarr_cache: dict[tuple[str, int | None], dict | None] = {}
+    sonarr_cache: dict[tuple[str, int | None], dict | None] = {}
+    radarr_title_year = set()
+    sonarr_title_year = set()
     movies = []
     excluded = []
-    for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE):
-        if _wanted_key(pm.title, pm.year) in wanted_keys:
-            excluded.append({
+    if import_movies:
+        if skip_radarr:
+            radarr_movies = radarr_api.radarr_get_all_movies(db)
+            radarr_title_year = {_title_year_key(m.title, m.year) for m in radarr_movies if m.title}
+        for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE):
+            if _wanted_key(pm.title, pm.year) in wanted_keys:
+                key = _wanted_key(pm.title, pm.year)
+                excluded.append({
+                    "title": pm.title,
+                    "year": pm.year,
+                    "media_type": "movie",
+                    "reason": "Gia in wanted",
+                    "matches": wanted_index.get(key, [])
+                })
+                continue
+            if skip_radarr and (_title_year_key(pm.title, pm.year) in radarr_title_year):
+                excluded.append({
+                    "title": pm.title,
+                    "year": pm.year,
+                    "media_type": "movie",
+                    "reason": "Gia in Radarr",
+                    "matches": []
+                })
+                continue
+            match = None
+            if match_movies:
+                cache_key = (pm.title, pm.year)
+                if cache_key not in radarr_cache:
+                    radarr_cache[cache_key] = _radarr_find_best(pm.title, pm.year)
+                match = radarr_cache[cache_key]
+            movies.append({
+                "guid": pm.guid,
                 "title": pm.title,
                 "year": pm.year,
-                "media_type": "movie",
-                "reason": "Gia in wanted"
+                "file_path": pm.file_path,
+                "tmdb_id": match.get("tmdb_id") if match else None,
+                "tmdb_title": match.get("tmdb_title") if match else None,
+                "tmdb_year": match.get("tmdb_year") if match else None,
+                "tmdb_score": match.get("tmdb_score") if match else None,
+                "tmdb_confident": match.get("tmdb_confident") if match else False
             })
-            continue
-        match = _radarr_find_best(pm.title, pm.year)
-        movies.append({
-            "guid": pm.guid,
-            "title": pm.title,
-            "year": pm.year,
-            "file_path": pm.file_path,
-            "tmdb_id": match.get("tmdb_id") if match else None,
-            "tmdb_title": match.get("tmdb_title") if match else None,
-            "tmdb_year": match.get("tmdb_year") if match else None,
-            "tmdb_score": match.get("tmdb_score") if match else None,
-            "tmdb_confident": match.get("tmdb_confident") if match else False
-        })
     series = []
-    for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.SERIES_MEDIATYPE):
-        if _wanted_key(pm.title, pm.year) in wanted_keys:
-            excluded.append({
+    if import_series:
+        if skip_sonarr:
+            sonarr_series = sonarr_api.sonarr_get_all_series(db)
+            sonarr_title_year = {_title_year_key(s.title, s.year) for s in sonarr_series if s.title}
+        for pm in plex_db_api.plex_get_series(filepath):
+            if _wanted_key(pm.title, pm.year) in wanted_keys:
+                key = _wanted_key(pm.title, pm.year)
+                excluded.append({
+                    "title": pm.title,
+                    "year": pm.year,
+                    "media_type": "series",
+                    "reason": "Gia in wanted",
+                    "matches": wanted_index.get(key, [])
+                })
+                continue
+            if skip_sonarr and (_title_year_key(pm.title, pm.year) in sonarr_title_year):
+                excluded.append({
+                    "title": pm.title,
+                    "year": pm.year,
+                    "media_type": "series",
+                    "reason": "Gia in Sonarr",
+                    "matches": []
+                })
+                continue
+            match = None
+            if match_series:
+                cache_key = (pm.title, pm.year)
+                if cache_key not in sonarr_cache:
+                    sonarr_cache[cache_key] = _sonarr_find_best(pm.title, pm.year)
+                match = sonarr_cache[cache_key]
+            series.append({
+                "guid": pm.guid,
                 "title": pm.title,
                 "year": pm.year,
-                "media_type": "series",
-                "reason": "Gia in wanted"
+                "file_path": pm.file_path,
+                "tvdb_id": match.get("tvdb_id") if match else None,
+                "tvdb_title": match.get("tvdb_title") if match else None,
+                "tvdb_year": match.get("tvdb_year") if match else None,
+                "tvdb_score": match.get("tvdb_score") if match else None,
+                "tvdb_confident": match.get("tvdb_confident") if match else False
             })
-            continue
-        series.append({
-            "guid": pm.guid,
-            "title": pm.title,
-            "year": pm.year,
-            "file_path": pm.file_path
-        })
-    return {"filepath": filepath, "movies": movies, "series": series, "excluded": excluded}
+    return {
+        "filepath": filepath,
+        "movies": movies,
+        "series": series,
+        "excluded": excluded,
+        "options": {
+            "import_movies": import_movies,
+            "import_series": import_series,
+            "match_movies": match_movies,
+            "match_series": match_series,
+            "skip_radarr": skip_radarr if import_movies else False,
+            "skip_sonarr": skip_sonarr if import_series else False
+        }
+    }
 
 
-def _start_preview_job(filepath: str) -> str:
+def _start_preview_job(filepath: str, import_movies: bool, import_series: bool, match_movies: bool, match_series: bool, skip_radarr: bool, skip_sonarr: bool) -> str:
     job_id = uuid.uuid4().hex
     with _plex_jobs_lock:
         _plex_jobs[job_id] = {
@@ -126,64 +256,145 @@ def _start_preview_job(filepath: str) -> str:
                 _plex_jobs[job_id]["stage"] = "Lettura film Plex"
                 _plex_jobs[job_id]["updated_at"] = time.time()
             movies_raw = plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE)
-            wanted_keys = _get_wanted_keys()
+            wanted_index = _get_wanted_index()
+            wanted_keys = set(wanted_index.keys())
+            radarr_cache: dict[tuple[str, int | None], dict | None] = {}
+            sonarr_cache: dict[tuple[str, int | None], dict | None] = {}
+            radarr_title_year = set()
+            sonarr_title_year = set()
+            if import_movies and skip_radarr:
+                radarr_movies = radarr_api.radarr_get_all_movies(db)
+                radarr_title_year = {_title_year_key(m.title, m.year) for m in radarr_movies if m.title}
+            if import_series and skip_sonarr:
+                sonarr_series = sonarr_api.sonarr_get_all_series(db)
+                sonarr_title_year = {_title_year_key(s.title, s.year) for s in sonarr_series if s.title}
             with _plex_jobs_lock:
-                _plex_jobs[job_id]["stage"] = "Match TMDB tramite Radarr"
-                _plex_jobs[job_id]["total"] = len(movies_raw)
+                _plex_jobs[job_id]["stage"] = "Match TMDB tramite Radarr" if match_movies else "Lettura film Plex"
+                _plex_jobs[job_id]["total"] = len(movies_raw) if import_movies else 0
                 _plex_jobs[job_id]["processed"] = 0
                 _plex_jobs[job_id]["updated_at"] = time.time()
             movies = []
             excluded = []
-            for pm in movies_raw:
-                if _wanted_key(pm.title, pm.year) in wanted_keys:
-                    excluded.append({
+            if import_movies:
+                for pm in movies_raw:
+                    if _wanted_key(pm.title, pm.year) in wanted_keys:
+                        key = _wanted_key(pm.title, pm.year)
+                        excluded.append({
+                            "title": pm.title,
+                            "year": pm.year,
+                            "media_type": "movie",
+                            "reason": "Gia in wanted",
+                            "matches": wanted_index.get(key, [])
+                        })
+                        with _plex_jobs_lock:
+                            _plex_jobs[job_id]["processed"] += 1
+                            _plex_jobs[job_id]["updated_at"] = time.time()
+                        continue
+                    if skip_radarr and (_title_year_key(pm.title, pm.year) in radarr_title_year):
+                        excluded.append({
+                            "title": pm.title,
+                            "year": pm.year,
+                            "media_type": "movie",
+                            "reason": "Gia in Radarr",
+                            "matches": []
+                        })
+                        with _plex_jobs_lock:
+                            _plex_jobs[job_id]["processed"] += 1
+                            _plex_jobs[job_id]["updated_at"] = time.time()
+                        continue
+                    match = None
+                    if match_movies:
+                        cache_key = (pm.title, pm.year)
+                        if cache_key not in radarr_cache:
+                            radarr_cache[cache_key] = _radarr_find_best(pm.title, pm.year)
+                        match = radarr_cache[cache_key]
+                    movies.append({
+                        "guid": pm.guid,
                         "title": pm.title,
                         "year": pm.year,
-                        "media_type": "movie",
-                        "reason": "Gia in wanted"
+                        "file_path": pm.file_path,
+                        "tmdb_id": match.get("tmdb_id") if match else None,
+                        "tmdb_title": match.get("tmdb_title") if match else None,
+                        "tmdb_year": match.get("tmdb_year") if match else None,
+                        "tmdb_score": match.get("tmdb_score") if match else None,
+                        "tmdb_confident": match.get("tmdb_confident") if match else False
                     })
                     with _plex_jobs_lock:
                         _plex_jobs[job_id]["processed"] += 1
                         _plex_jobs[job_id]["updated_at"] = time.time()
-                    continue
-                match = _radarr_find_best(pm.title, pm.year)
-                movies.append({
-                    "guid": pm.guid,
-                    "title": pm.title,
-                    "year": pm.year,
-                    "file_path": pm.file_path,
-                    "tmdb_id": match.get("tmdb_id") if match else None,
-                    "tmdb_title": match.get("tmdb_title") if match else None,
-                    "tmdb_year": match.get("tmdb_year") if match else None,
-                    "tmdb_score": match.get("tmdb_score") if match else None,
-                    "tmdb_confident": match.get("tmdb_confident") if match else False
-                })
-                with _plex_jobs_lock:
-                    _plex_jobs[job_id]["processed"] += 1
-                    _plex_jobs[job_id]["updated_at"] = time.time()
             with _plex_jobs_lock:
-                _plex_jobs[job_id]["stage"] = "Lettura serie Plex"
+                _plex_jobs[job_id]["stage"] = "Match TVDB tramite Sonarr" if match_series else "Lettura serie Plex"
+                _plex_jobs[job_id]["processed"] = 0
                 _plex_jobs[job_id]["updated_at"] = time.time()
             series = []
-            for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.SERIES_MEDIATYPE):
-                if _wanted_key(pm.title, pm.year) in wanted_keys:
-                    excluded.append({
+            series_raw = plex_db_api.plex_get_series(filepath)
+            with _plex_jobs_lock:
+                _plex_jobs[job_id]["total"] = len(series_raw) if import_series else 0
+                _plex_jobs[job_id]["updated_at"] = time.time()
+            if import_series:
+                for pm in series_raw:
+                    if _wanted_key(pm.title, pm.year) in wanted_keys:
+                        key = _wanted_key(pm.title, pm.year)
+                        excluded.append({
+                            "title": pm.title,
+                            "year": pm.year,
+                            "media_type": "series",
+                            "reason": "Gia in wanted",
+                            "matches": wanted_index.get(key, [])
+                        })
+                        with _plex_jobs_lock:
+                            _plex_jobs[job_id]["processed"] += 1
+                            _plex_jobs[job_id]["updated_at"] = time.time()
+                        continue
+                    if skip_sonarr and (_title_year_key(pm.title, pm.year) in sonarr_title_year):
+                        excluded.append({
+                            "title": pm.title,
+                            "year": pm.year,
+                            "media_type": "series",
+                            "reason": "Gia in Sonarr",
+                            "matches": []
+                        })
+                        with _plex_jobs_lock:
+                            _plex_jobs[job_id]["processed"] += 1
+                            _plex_jobs[job_id]["updated_at"] = time.time()
+                        continue
+                    match = None
+                    if match_series:
+                        cache_key = (pm.title, pm.year)
+                        if cache_key not in sonarr_cache:
+                            sonarr_cache[cache_key] = _sonarr_find_best(pm.title, pm.year)
+                        match = sonarr_cache[cache_key]
+                    series.append({
+                        "guid": pm.guid,
                         "title": pm.title,
                         "year": pm.year,
-                        "media_type": "series",
-                        "reason": "Gia in wanted"
+                        "file_path": pm.file_path,
+                        "tvdb_id": match.get("tvdb_id") if match else None,
+                        "tvdb_title": match.get("tvdb_title") if match else None,
+                        "tvdb_year": match.get("tvdb_year") if match else None,
+                        "tvdb_score": match.get("tvdb_score") if match else None,
+                        "tvdb_confident": match.get("tvdb_confident") if match else False
                     })
-                    continue
-                series.append({
-                    "guid": pm.guid,
-                    "title": pm.title,
-                    "year": pm.year,
-                    "file_path": pm.file_path
-                })
+                    with _plex_jobs_lock:
+                        _plex_jobs[job_id]["processed"] += 1
+                        _plex_jobs[job_id]["updated_at"] = time.time()
             with _plex_jobs_lock:
                 _plex_jobs[job_id]["status"] = "done"
                 _plex_jobs[job_id]["stage"] = "Completato"
-                _plex_jobs[job_id]["result"] = {"filepath": filepath, "movies": movies, "series": series, "excluded": excluded}
+                _plex_jobs[job_id]["result"] = {
+                    "filepath": filepath,
+                    "movies": movies,
+                    "series": series,
+                    "excluded": excluded,
+                    "options": {
+                        "import_movies": import_movies,
+                        "import_series": import_series,
+                        "match_movies": match_movies,
+                        "match_series": match_series,
+                        "skip_radarr": skip_radarr,
+                        "skip_sonarr": skip_sonarr
+                    }
+                }
                 _plex_jobs[job_id]["updated_at"] = time.time()
         except Exception as exc:
             with _plex_jobs_lock:
@@ -220,32 +431,51 @@ def import_plex():
                 return error_response
 
             if file and allowed_file(file.filename):
+                import_movies = _parse_bool(request.form.get("import_movies"), default=False)
+                import_series = _parse_bool(request.form.get("import_series"), default=False)
+                match_movies = _parse_bool(request.form.get("match_movies"), default=False)
+                match_series = _parse_bool(request.form.get("match_series"), default=False)
+                skip_radarr = _parse_bool(request.form.get("skip_radarr"), default=False)
+                skip_sonarr = _parse_bool(request.form.get("skip_sonarr"), default=False)
                 filepath = save_uploaded_file(file)
                 if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-                    job_id = _start_preview_job(filepath)
+                    job_id = _start_preview_job(filepath, import_movies, import_series, match_movies, match_series, skip_radarr, skip_sonarr)
                     from flask import jsonify
                     return jsonify({"ok": True, "job_id": job_id})
-                preview = _build_preview(filepath)
+                preview = _build_preview(filepath, import_movies, import_series, match_movies, match_series, skip_radarr, skip_sonarr)
         elif action == "import":
             filepath = request.form.get("filepath")
             selected = set(request.form.getlist("plex_guid"))
+            match_movies = _parse_bool(request.form.get("match_movies"), default=False)
+            match_series = _parse_bool(request.form.get("match_series"), default=False)
+            import_movies = _parse_bool(request.form.get("import_movies"), default=False)
+            import_series = _parse_bool(request.form.get("import_series"), default=False)
             tmdb_map = {}
-            for item in request.form.getlist("tmdb_match"):
+            for item in request.form.getlist("tmdb_confirm"):
                 parts = item.split("|")
-                if len(parts) >= 3:
-                    guid, tmdb_id, confident = parts[0], parts[1], parts[2]
-                    if tmdb_id and confident == "1":
+                if len(parts) >= 2:
+                    guid, tmdb_id = parts[0], parts[1]
+                    if tmdb_id:
                         tmdb_map[guid] = tmdb_id
+            tvdb_map = {}
+            for item in request.form.getlist("tvdb_confirm"):
+                parts = item.split("|")
+                if len(parts) >= 2:
+                    guid, tvdb_id = parts[0], parts[1]
+                    if tvdb_id:
+                        tvdb_map[guid] = tvdb_id
             if not filepath:
                 report["errors"].append("Percorso file Plex non valido.")
             elif not selected:
                 report["errors"].append("Nessun elemento selezionato per l'import.")
             else:
                 all_items = {}
-                for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE):
-                    all_items[pm.guid] = ("movie", pm)
-                for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.SERIES_MEDIATYPE):
-                    all_items[pm.guid] = ("series", pm)
+                if import_movies:
+                    for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE):
+                        all_items[pm.guid] = ("movie", pm)
+                if import_series:
+                    for pm in plex_db_api.plex_get_series(filepath):
+                        all_items[pm.guid] = ("series", pm)
 
                 for guid in selected:
                     media_type, pm = all_items.get(guid, (None, None))
@@ -266,12 +496,12 @@ def import_plex():
                         if inserted:
                             if media_type == "movie":
                                 tmdb_id = tmdb_map.get(guid)
-                                if not tmdb_id:
-                                    match = _radarr_find_best(pm.title, pm.year)
-                                    if match and match.get("tmdb_confident"):
-                                        tmdb_id = match.get("tmdb_id")
                                 if tmdb_id:
                                     db.add_external_id(media_id, "tmdb", str(tmdb_id))
+                            if media_type == "series":
+                                tvdb_id = tvdb_map.get(guid)
+                                if tvdb_id:
+                                    db.add_external_id(media_id, "tvdb", str(tvdb_id))
                             report["imported"].append(pm)
                         else:
                             report["skipped"].append(pm)

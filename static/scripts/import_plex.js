@@ -1,17 +1,35 @@
 function updateSelectionStats() {
+    var totalEl = document.getElementById('selected-total');
+    if (!totalEl) {
+        return;
+    }
     var selected = document.querySelectorAll('.plex-select:checked');
     var selectedMovies = document.querySelectorAll('.plex-movie:checked');
     var selectedSeries = document.querySelectorAll('.plex-series:checked');
-    document.getElementById('selected-total').textContent = selected.length;
-    document.getElementById('selected-movies').textContent = selectedMovies.length;
-    document.getElementById('selected-series').textContent = selectedSeries.length;
-    document.getElementById('import-btn').disabled = selected.length === 0;
+    totalEl.textContent = selected.length;
+    var moviesEl = document.getElementById('selected-movies');
+    var seriesEl = document.getElementById('selected-series');
+    var importBtn = document.getElementById('import-btn');
+    if (moviesEl) {
+        moviesEl.textContent = selectedMovies.length;
+    }
+    if (seriesEl) {
+        seriesEl.textContent = selectedSeries.length;
+    }
+    if (importBtn) {
+        importBtn.disabled = selected.length === 0;
+    }
     updateTypeToggleButtons();
 }
 
 function applyFilters() {
-    var query = (document.getElementById('plex-search').value || '').trim().toLowerCase();
-    var onlySelected = document.getElementById('plex-only-selected').checked;
+    var searchEl = document.getElementById('plex-search');
+    var selectedEl = document.getElementById('plex-only-selected');
+    if (!searchEl || !selectedEl) {
+        return;
+    }
+    var query = (searchEl.value || '').trim().toLowerCase();
+    var onlySelected = selectedEl.checked;
     document.querySelectorAll('.plex-row').forEach(function(row) {
         var title = row.getAttribute('data-title') || '';
         var checkbox = row.querySelector('.plex-select');
@@ -56,16 +74,22 @@ function sortTable(table, key, asc) {
     rows.forEach(function(row) { tbody.appendChild(row); });
 }
 
-document.getElementById('select-all-btn').addEventListener('click', function() {
-    document.querySelectorAll('.plex-select').forEach(function(el) { el.checked = true; });
-    updateSelectionStats();
-    applyFilters();
-});
-document.getElementById('clear-all-btn').addEventListener('click', function() {
-    document.querySelectorAll('.plex-select').forEach(function(el) { el.checked = false; });
-    updateSelectionStats();
-    applyFilters();
-});
+var selectAllBtn = document.getElementById('select-all-btn');
+if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', function() {
+        document.querySelectorAll('.plex-select').forEach(function(el) { el.checked = true; });
+        updateSelectionStats();
+        applyFilters();
+    });
+}
+var clearAllBtn = document.getElementById('clear-all-btn');
+if (clearAllBtn) {
+    clearAllBtn.addEventListener('click', function() {
+        document.querySelectorAll('.plex-select').forEach(function(el) { el.checked = false; });
+        updateSelectionStats();
+        applyFilters();
+    });
+}
 function normalizeBasePath(value) {
     if (!value) {
         return '';
@@ -95,12 +119,18 @@ function toggleBaseSelection(checked) {
     applyFilters();
 }
 
-document.getElementById('select-base-btn').addEventListener('click', function() {
-    toggleBaseSelection(true);
-});
-document.getElementById('clear-base-btn').addEventListener('click', function() {
-    toggleBaseSelection(false);
-});
+var selectBaseBtn = document.getElementById('select-base-btn');
+if (selectBaseBtn) {
+    selectBaseBtn.addEventListener('click', function() {
+        toggleBaseSelection(true);
+    });
+}
+var clearBaseBtn = document.getElementById('clear-base-btn');
+if (clearBaseBtn) {
+    clearBaseBtn.addEventListener('click', function() {
+        toggleBaseSelection(false);
+    });
+}
 
 document.querySelectorAll('.plex-select').forEach(function(el) {
     el.addEventListener('change', function(event) {
@@ -108,8 +138,14 @@ document.querySelectorAll('.plex-select').forEach(function(el) {
         applyFilters();
     });
 });
-document.getElementById('plex-search').addEventListener('input', applyFilters);
-document.getElementById('plex-only-selected').addEventListener('change', applyFilters);
+var plexSearchEl = document.getElementById('plex-search');
+if (plexSearchEl) {
+    plexSearchEl.addEventListener('input', applyFilters);
+}
+var plexOnlySelectedEl = document.getElementById('plex-only-selected');
+if (plexOnlySelectedEl) {
+    plexOnlySelectedEl.addEventListener('change', applyFilters);
+}
 document.querySelectorAll('.type-toggle').forEach(function(btn) {
     btn.addEventListener('click', function() {
         var type = btn.getAttribute('data-type');

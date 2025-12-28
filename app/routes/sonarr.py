@@ -57,27 +57,20 @@ def sonarr_sync_preview():
     series = sonarr_api.sonarr_get_all_series(db)
     wanted_items = db.get_wanted_items(limit=1000000)
     wanted_by_tvdb = set()
-    wanted_by_title_year = set()
     for item in wanted_items:
         tvdb_id = item.external_ids.get("tvdb") or item.external_ids.get("sonarr")
         if tvdb_id:
             wanted_by_tvdb.add(str(tvdb_id))
-        title_key = (item.title or "").strip().lower()
-        wanted_by_title_year.add((title_key, item.year))
 
     missing = []
     present = []
     for s in series:
         tvdb_id = str(s.tvdb_id) if s.tvdb_id else None
-        title_key = (s.title or "").strip().lower()
         in_wanted = False
         match_type = None
         if tvdb_id and tvdb_id in wanted_by_tvdb:
             in_wanted = True
             match_type = "tvdb"
-        elif (title_key, s.year) in wanted_by_title_year:
-            in_wanted = True
-            match_type = "title_year"
 
         payload = {
             "title": s.title,

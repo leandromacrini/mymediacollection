@@ -9,6 +9,7 @@ SONARR_API_KEY = "REMOVED"
 PROFILE_ID = 1           # Quality profile
 ENABLE_SEARCH = False     # True per far partire la ricerca automatica su Sonarr
 ROOT_FOLDER = "/data/File Sharing/sonarr"
+REQUEST_TIMEOUT = 8
 # ==================
 
 def _get_config(db: db_core.MediaDB | None = None) -> dict:
@@ -44,7 +45,7 @@ def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia
     Returns a list of SonarrMedia objects.
     """
     cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/series", headers=cfg["headers"])
+    r = requests.get(f"{cfg['url']}/api/v3/series", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)
     if r.status_code != 200:
         print(f"Error fetching series from Sonarr: {r.status_code}")
         return []
@@ -66,7 +67,7 @@ def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia
 
 def sonarr_get_root_folders(db: db_core.MediaDB | None = None) -> list[dict]:
     cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/rootfolder", headers=cfg["headers"])
+    r = requests.get(f"{cfg['url']}/api/v3/rootfolder", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)
     if r.status_code != 200:
         print(f"Error fetching Sonarr root folders: {r.status_code}")
         return []
@@ -78,7 +79,7 @@ def sonarr_get_root_folders(db: db_core.MediaDB | None = None) -> list[dict]:
 
 def sonarr_get_quality_profiles(db: db_core.MediaDB | None = None) -> list[dict]:
     cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/qualityprofile", headers=cfg["headers"])
+    r = requests.get(f"{cfg['url']}/api/v3/qualityprofile", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)
     if r.status_code != 200:
         print(f"Error fetching Sonarr quality profiles: {r.status_code}")
         return []
@@ -103,7 +104,12 @@ def sonarr_get_by_tvdb(tvdb_id: int, db: db_core.MediaDB | None = None) -> Sonar
     if not tvdb_id:
         return None
     cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/series", headers=cfg["headers"], params={"tvdbId": tvdb_id})
+    r = requests.get(
+        f"{cfg['url']}/api/v3/series",
+        headers=cfg["headers"],
+        params={"tvdbId": tvdb_id},
+        timeout=REQUEST_TIMEOUT
+    )
     if r.status_code != 200:
         print(f"Error fetching series by TVDB ID {tvdb_id}: {r.status_code}")
         return None
@@ -117,14 +123,20 @@ def sonarr_get_by_tvdb(tvdb_id: int, db: db_core.MediaDB | None = None) -> Sonar
         imdb_id=s.get("imdbId"),
         year=s.get("year"),
         root_folder=s.get("rootFolderPath"),
-        monitored=s.get("monitored", True)
+        monitored=s.get("monitored", True),
+        slug=s.get("titleSlug")
     )
 
 def sonarr_get_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> SonarrMedia | None:
     if not imdb_id:
         return None
     cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/series", headers=cfg["headers"], params={"imdbId": imdb_id})
+    r = requests.get(
+        f"{cfg['url']}/api/v3/series",
+        headers=cfg["headers"],
+        params={"imdbId": imdb_id},
+        timeout=REQUEST_TIMEOUT
+    )
     if r.status_code != 200:
         print(f"Error fetching series by IMDb ID {imdb_id}: {r.status_code}")
         return None
@@ -138,7 +150,31 @@ def sonarr_get_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> Sonar
         imdb_id=s.get("imdbId"),
         year=s.get("year"),
         root_folder=s.get("rootFolderPath"),
-        monitored=s.get("monitored", True)
+        monitored=s.get("monitored", True),
+        slug=s.get("titleSlug")
+    )
+
+def sonarr_lookup_by_tvdb(tvdb_id: int, db: db_core.MediaDB | None = None) -> SonarrMedia | None:
+    if not tvdb_id:
+        return None
+    cfg = _get_config(db)
+    params = {"term": f"tvdb:{tvdb_id}", "apikey": cfg["headers"]["X-Api-Key"]}
+    r = requests.get(f"{cfg['url']}/api/v3/series/lookup", params=params, timeout=REQUEST_TIMEOUT)
+    if r.status_code != 200:
+        print(f"Error looking up TVDB ID {tvdb_id} on Sonarr: {r.status_code}")
+        return None
+    data = r.json()
+    if not data:
+        return None
+    s = data[0]
+    return SonarrMedia(
+        title=s.get("title"),
+        tvdb_id=s.get("tvdbId"),
+        imdb_id=s.get("imdbId"),
+        year=s.get("year"),
+        root_folder=cfg["root_folder"],
+        monitored=True,
+        slug=s.get("titleSlug")
     )
 
 def sonarr_add_series(
@@ -155,7 +191,7 @@ def sonarr_add_series(
     payload = {
         "title": item.title,
         "qualityProfileId": profile_id if profile_id is not None else cfg["profile_id"],
-        "titleSlug": item.title.replace(" ", "-").lower(),
+        "titleSlug": item.slug or item.title.replace(" ", "-").lower(),
         "rootFolderPath": root_folder if root_folder is not None else cfg["root_folder"],
         "monitored": item.monitored,
         "addOptions": {"searchForMissingEpisodes": enable_search if enable_search is not None else cfg["enable_search"]}
@@ -166,7 +202,12 @@ def sonarr_add_series(
     if item.imdb_id:
         payload["imdbId"] = item.imdb_id
 
-    r = requests.post(f"{cfg['url']}/api/v3/series", headers=cfg["headers"], json=payload)
+    r = requests.post(
+        f"{cfg['url']}/api/v3/series",
+        headers=cfg["headers"],
+        json=payload,
+        timeout=REQUEST_TIMEOUT
+    )
     if r.status_code == 201:
         print(f"Added to Sonarr: {item.title}")
         return True
@@ -181,7 +222,7 @@ def sonarr_lookup(title: str, db: db_core.MediaDB | None = None) -> list[SonarrM
     """
     cfg = _get_config(db)
     params = {"term": title, "apikey": cfg["headers"]["X-Api-Key"]}
-    r = requests.get(f"{cfg['url']}/api/v3/series/lookup", params=params)
+    r = requests.get(f"{cfg['url']}/api/v3/series/lookup", params=params, timeout=REQUEST_TIMEOUT)
     if r.status_code != 200:
         print(f"Error looking up '{title}' on Sonarr: {r.status_code}")
         return []

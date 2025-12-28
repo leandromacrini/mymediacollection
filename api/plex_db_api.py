@@ -3,7 +3,9 @@ from dataclasses import dataclass
 
 # -------- CONSTANTS --------
 MOVIE_MEDIATYPE = 1
-SERIES_MEDIATYPE = 2  # se in futuro vuoi gestire anche le serie
+SERIES_MEDIATYPE = 2  # show
+SEASON_MEDIATYPE = 3
+EPISODE_MEDIATYPE = 4
 
 # -------- OBJECTS --------
 @dataclass
@@ -38,6 +40,38 @@ def plex_get_media_by_mediatype(db_path: str, mediatype: int) -> list[PlexMedia]
         JOIN media_parts mp ON mp.media_item_id = m.id
         WHERE mi.metadata_type = ?
     """, (mediatype,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [PlexMedia(title=row[0], year=row[1], guid=row[2], file_path=row[3]) for row in rows]
+
+def plex_get_series(db_path: str) -> list[PlexMedia]:
+    """
+    Retrieve series (show) items from Plex DB.
+    Uses one episode file path as reference for the series.
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT
+            show.title,
+            show.year,
+            show.guid,
+            MIN(mp.file) AS file_path
+        FROM metadata_items show
+        JOIN metadata_items season
+            ON season.parent_id = show.id
+           AND season.metadata_type = ?
+        JOIN metadata_items episode
+            ON episode.parent_id = season.id
+           AND episode.metadata_type = ?
+        JOIN media_items m
+            ON m.metadata_item_id = episode.id
+        JOIN media_parts mp
+            ON mp.media_item_id = m.id
+        WHERE show.metadata_type = ?
+        GROUP BY show.id, show.title, show.year, show.guid
+    """, (SEASON_MEDIATYPE, EPISODE_MEDIATYPE, SERIES_MEDIATYPE))
     rows = cursor.fetchall()
     conn.close()
 
