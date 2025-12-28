@@ -446,6 +446,12 @@ function initWantedUI() {
             data: JSON.stringify({ source: source, external_id: externalId, link: link })
         }).done(function() {
             applyExternalUpdate(mediaId, source, externalId, link);
+            if (source === 'tmdb' && arguments[0] && arguments[0].in_radarr) {
+                updateRowInRadarr(mediaId);
+            }
+            if (source === 'tvdb' && arguments[0] && arguments[0].in_sonarr) {
+                updateRowInSonarr(mediaId);
+            }
             var modalEl = button.closest('.modal')[0];
             if (modalEl) {
                 var modal = bootstrap.Modal.getInstance(modalEl);

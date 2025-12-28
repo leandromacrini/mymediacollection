@@ -226,6 +226,9 @@ def wanted_set_external(media_item_id):
     link = data.get("link")
     if not source or not external_id:
         return jsonify({"ok": False, "error": "missing_parameters"}), 400
+    item = db.get_media_item(media_item_id)
+    if not item:
+        return jsonify({"ok": False, "error": "not_found"}), 404
 
     db.add_external_id(media_item_id, source, str(external_id))
     if source == "anilist":
@@ -233,7 +236,30 @@ def wanted_set_external(media_item_id):
     if source == "tvdb" and link:
         db.add_external_id(media_item_id, "tvdb_link", link)
 
-    return jsonify({"ok": True})
+    in_radarr = False
+    in_sonarr = False
+    if source == "tmdb" and item.media_type == "movie":
+        try:
+            tmdb_val = int(external_id)
+        except (TypeError, ValueError):
+            tmdb_val = None
+        if tmdb_val:
+            existing = radarr_api.radarr_get_by_tmdb(tmdb_val, db)
+            if existing:
+                db.add_external_id(media_item_id, "radarr", str(tmdb_val))
+                in_radarr = True
+    if source == "tvdb" and item.media_type == "series":
+        try:
+            tvdb_val = int(external_id)
+        except (TypeError, ValueError):
+            tvdb_val = None
+        if tvdb_val:
+            existing = sonarr_api.sonarr_get_by_tvdb(tvdb_val, db)
+            if existing:
+                db.add_external_id(media_item_id, "sonarr", str(tvdb_val))
+                in_sonarr = True
+
+    return jsonify({"ok": True, "in_radarr": in_radarr, "in_sonarr": in_sonarr})
 
 
 @bp.route("/api/wanted/<int:media_item_id>/radarr/add", methods=["POST"])

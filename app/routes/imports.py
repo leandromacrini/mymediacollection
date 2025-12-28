@@ -134,13 +134,16 @@ def _build_preview(
     wanted_keys = set(wanted_index.keys())
     radarr_cache: dict[tuple[str, int | None], dict | None] = {}
     sonarr_cache: dict[tuple[str, int | None], dict | None] = {}
+    radarr_tmdb = set()
     radarr_title_year = set()
+    sonarr_tvdb = set()
     sonarr_title_year = set()
     movies = []
     excluded = []
     if import_movies:
         if skip_radarr:
             radarr_movies = radarr_api.radarr_get_all_movies(db)
+            radarr_tmdb = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id}
             radarr_title_year = {_title_year_key(m.title, m.year) for m in radarr_movies if m.title}
         for pm in plex_db_api.plex_get_media_by_mediatype(filepath, plex_db_api.MOVIE_MEDIATYPE):
             if _wanted_key(pm.title, pm.year) in wanted_keys:
@@ -168,6 +171,15 @@ def _build_preview(
                 if cache_key not in radarr_cache:
                     radarr_cache[cache_key] = _radarr_find_best(pm.title, pm.year)
                 match = radarr_cache[cache_key]
+            if skip_radarr and match and match.get("tmdb_id") and str(match.get("tmdb_id")) in radarr_tmdb:
+                excluded.append({
+                    "title": pm.title,
+                    "year": pm.year,
+                    "media_type": "movie",
+                    "reason": "Gia in Radarr (TMDB)",
+                    "matches": []
+                })
+                continue
             movies.append({
                 "guid": pm.guid,
                 "title": pm.title,
@@ -183,6 +195,7 @@ def _build_preview(
     if import_series:
         if skip_sonarr:
             sonarr_series = sonarr_api.sonarr_get_all_series(db)
+            sonarr_tvdb = {str(s.tvdb_id) for s in sonarr_series if s.tvdb_id}
             sonarr_title_year = {_title_year_key(s.title, s.year) for s in sonarr_series if s.title}
         for pm in plex_db_api.plex_get_series(filepath):
             if _wanted_key(pm.title, pm.year) in wanted_keys:
@@ -210,6 +223,15 @@ def _build_preview(
                 if cache_key not in sonarr_cache:
                     sonarr_cache[cache_key] = _sonarr_find_best(pm.title, pm.year)
                 match = sonarr_cache[cache_key]
+            if skip_sonarr and match and match.get("tvdb_id") and str(match.get("tvdb_id")) in sonarr_tvdb:
+                excluded.append({
+                    "title": pm.title,
+                    "year": pm.year,
+                    "media_type": "series",
+                    "reason": "Gia in Sonarr (TVDB)",
+                    "matches": []
+                })
+                continue
             series.append({
                 "guid": pm.guid,
                 "title": pm.title,
@@ -260,13 +282,17 @@ def _start_preview_job(filepath: str, import_movies: bool, import_series: bool, 
             wanted_keys = set(wanted_index.keys())
             radarr_cache: dict[tuple[str, int | None], dict | None] = {}
             sonarr_cache: dict[tuple[str, int | None], dict | None] = {}
+            radarr_tmdb = set()
             radarr_title_year = set()
+            sonarr_tvdb = set()
             sonarr_title_year = set()
             if import_movies and skip_radarr:
                 radarr_movies = radarr_api.radarr_get_all_movies(db)
+                radarr_tmdb = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id}
                 radarr_title_year = {_title_year_key(m.title, m.year) for m in radarr_movies if m.title}
             if import_series and skip_sonarr:
                 sonarr_series = sonarr_api.sonarr_get_all_series(db)
+                sonarr_tvdb = {str(s.tvdb_id) for s in sonarr_series if s.tvdb_id}
                 sonarr_title_year = {_title_year_key(s.title, s.year) for s in sonarr_series if s.title}
             with _plex_jobs_lock:
                 _plex_jobs[job_id]["stage"] = "Match TMDB tramite Radarr" if match_movies else "Lettura film Plex"
@@ -308,6 +334,18 @@ def _start_preview_job(filepath: str, import_movies: bool, import_series: bool, 
                         if cache_key not in radarr_cache:
                             radarr_cache[cache_key] = _radarr_find_best(pm.title, pm.year)
                         match = radarr_cache[cache_key]
+                    if skip_radarr and match and match.get("tmdb_id") and str(match.get("tmdb_id")) in radarr_tmdb:
+                        excluded.append({
+                            "title": pm.title,
+                            "year": pm.year,
+                            "media_type": "movie",
+                            "reason": "Gia in Radarr (TMDB)",
+                            "matches": []
+                        })
+                        with _plex_jobs_lock:
+                            _plex_jobs[job_id]["processed"] += 1
+                            _plex_jobs[job_id]["updated_at"] = time.time()
+                        continue
                     movies.append({
                         "guid": pm.guid,
                         "title": pm.title,
@@ -364,6 +402,18 @@ def _start_preview_job(filepath: str, import_movies: bool, import_series: bool, 
                         if cache_key not in sonarr_cache:
                             sonarr_cache[cache_key] = _sonarr_find_best(pm.title, pm.year)
                         match = sonarr_cache[cache_key]
+                    if skip_sonarr and match and match.get("tvdb_id") and str(match.get("tvdb_id")) in sonarr_tvdb:
+                        excluded.append({
+                            "title": pm.title,
+                            "year": pm.year,
+                            "media_type": "series",
+                            "reason": "Gia in Sonarr (TVDB)",
+                            "matches": []
+                        })
+                        with _plex_jobs_lock:
+                            _plex_jobs[job_id]["processed"] += 1
+                            _plex_jobs[job_id]["updated_at"] = time.time()
+                        continue
                     series.append({
                         "guid": pm.guid,
                         "title": pm.title,
