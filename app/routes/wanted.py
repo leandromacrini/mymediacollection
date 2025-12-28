@@ -276,6 +276,8 @@ def wanted_add_radarr(media_item_id):
     root_folder = data.get("root_folder")
     profile_id = data.get("profile_id")
     enable_search = data.get("enable_search")
+    monitor_specials_raw = data.get("monitor_specials")
+    monitor_specials = str(monitor_specials_raw).strip().lower() in ("1", "true", "yes", "on")
     if not root_folder or not profile_id:
         return jsonify({"ok": False, "error": "missing_options"}), 400
 
@@ -297,6 +299,7 @@ def wanted_add_radarr(media_item_id):
         profile_id=int(profile_id),
         root_folder=root_folder,
         enable_search=bool(enable_search),
+        monitor_specials=bool(monitor_specials),
         db=db
     )
     if added:
@@ -318,6 +321,7 @@ def wanted_add_sonarr(media_item_id):
     data = request.get_json(silent=True) or {}
     root_folder = data.get("root_folder")
     profile_id = data.get("profile_id")
+    monitor_specials = data.get("monitor_specials")
     enable_search = data.get("enable_search")
     if not root_folder or not profile_id:
         return jsonify({"ok": False, "error": "missing_options"}), 400
@@ -334,7 +338,7 @@ def wanted_add_sonarr(media_item_id):
             year=item.year,
             tvdb_id=int(tvdb_id),
             imdb_id=item.external_ids.get("imdb"),
-            root_folder=root_folder,
+            root_folder=root_folder,            
             monitored=True
         )
     added = sonarr_api.sonarr_add_series(
@@ -342,6 +346,7 @@ def wanted_add_sonarr(media_item_id):
         profile_id=int(profile_id),
         root_folder=root_folder,
         enable_search=bool(enable_search),
+        monitor_specials=bool(monitor_specials),
         db=db
     )
     if added:
@@ -357,6 +362,8 @@ def wanted_bulk_add_radarr():
     root_folder = data.get("root_folder")
     profile_id = data.get("profile_id")
     enable_search = data.get("enable_search")
+    monitor_specials_raw = data.get("monitor_specials")
+    monitor_specials = str(monitor_specials_raw).strip().lower() in ("1", "true", "yes", "on")
     if not media_ids or not root_folder or not profile_id:
         return jsonify({"ok": False, "error": "missing_parameters"}), 400
 
@@ -434,6 +441,8 @@ def wanted_bulk_add_sonarr():
     root_folder = data.get("root_folder")
     profile_id = data.get("profile_id")
     enable_search = data.get("enable_search")
+    monitor_specials_raw = data.get("monitor_specials")
+    monitor_specials = str(monitor_specials_raw).strip().lower() in ("1", "true", "yes", "on")
     if not media_ids or not root_folder or not profile_id:
         return jsonify({"ok": False, "error": "missing_parameters"}), 400
 
@@ -484,6 +493,7 @@ def wanted_bulk_add_sonarr():
             profile_id=int(profile_id),
             root_folder=root_folder,
             enable_search=bool(enable_search),
+            monitor_specials=bool(monitor_specials),
             db=db
         )
         if ok:

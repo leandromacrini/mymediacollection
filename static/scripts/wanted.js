@@ -100,7 +100,10 @@ function initWantedUI() {
         $row.data('in-radarr', '1');
         var tmdbId = $row.data('tmdb-id');
         if (tmdbId && !$row.find('.badge-radarr').length) {
-            $row.find('td').eq(4).append(
+            var idCell = $row.find('td').eq(4);
+            var badgeWrap = idCell.find('.d-flex').first();
+            var target = badgeWrap.length ? badgeWrap : idCell;
+            target.append(
                 '<a class="badge badge-radarr text-decoration-none" href="' + radarrBase + '/movie/' + tmdbId + '" target="_blank" rel="noopener" data-bs-toggle="tooltip" data-bs-placement="top" title="Radarr ' + tmdbId + '">Radarr</a>'
             );
         }
@@ -123,7 +126,9 @@ function initWantedUI() {
         var tvdbId = $row.data('tvdb-id');
         var idCell = $row.find('td').eq(4);
         if (tvdbId && !idCell.find('.badge-sonarr').length) {
-            idCell.append('<span class="badge badge-sonarr">Sonarr</span>');
+            var badgeWrap = idCell.find('.d-flex').first();
+            var target = badgeWrap.length ? badgeWrap : idCell;
+            target.append('<span class="badge badge-sonarr">Sonarr</span>');
         }
         $row.find('.sonarr-add-btn').prop('disabled', true);
         var info = getRowInfo(mediaId);
@@ -641,6 +646,7 @@ function initWantedUI() {
         $('#sonarr-add-status').addClass('d-none').text('Invio a Sonarr in corso...');
         $('#sonarr-add-confirm').prop('disabled', false).text('Invia');
         applySonarrDefaults($('#sonarr-root-select'), $('#sonarr-profile-select'));
+        $('#sonarr-monitor-specials').prop('checked', false);
     });
 
     $('#bulkRadarrModal').on('show.bs.modal', function() {
@@ -669,6 +675,7 @@ function initWantedUI() {
         $('#bulk-sonarr-status').addClass('d-none').text('Invio a Sonarr in corso...');
         $('#bulk-sonarr-confirm').prop('disabled', false).text('Invia');
         applySonarrDefaults($('#bulk-sonarr-root'), $('#bulk-sonarr-profile'));
+        $('#bulk-sonarr-monitor-specials').prop('checked', false);
     });
 
     $('#radarr-add-confirm').on('click', function() {
@@ -714,6 +721,7 @@ function initWantedUI() {
         var root = $('#sonarr-root-select').val();
         var profile = $('#sonarr-profile-select').val();
         var enableSearch = $('#sonarr-search-enable').is(':checked');
+        var monitorSpecials = $('#sonarr-monitor-specials').is(':checked');
         if (!mediaId || !root || !profile) {
             $('#sonarr-add-error').removeClass('d-none').text('Seleziona root e profilo.');
             return;
@@ -725,7 +733,12 @@ function initWantedUI() {
             url: '/api/wanted/' + mediaId + '/sonarr/add',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ root_folder: root, profile_id: profile, enable_search: enableSearch })
+            data: JSON.stringify({
+                root_folder: root,
+                profile_id: profile,
+                enable_search: enableSearch,
+                monitor_specials: monitorSpecials ? 1 : 0
+            })
         }).done(function() {
             $('#sonarr-add-status').removeClass('d-none').text('Inviato a Sonarr. Aggiorno la lista...');
             setTimeout(function() {
@@ -797,6 +810,7 @@ function initWantedUI() {
         var profile = $('#bulk-sonarr-profile').val();
         var mediaIds = getSonarrEligibleIds();
         var enableSearch = $('#bulk-sonarr-search-enable').is(':checked');
+        var monitorSpecials = $('#bulk-sonarr-monitor-specials').is(':checked');
         if (!mediaIds.length || !root || !profile) {
             $('#bulk-sonarr-error').removeClass('d-none').text('Seleziona elementi, root e profilo.');
             return;
@@ -808,7 +822,13 @@ function initWantedUI() {
             url: '/api/wanted/sonarr/bulk_add',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ media_ids: mediaIds, root_folder: root, profile_id: profile, enable_search: enableSearch })
+            data: JSON.stringify({
+                media_ids: mediaIds,
+                root_folder: root,
+                profile_id: profile,
+                enable_search: enableSearch,
+                monitor_specials: monitorSpecials ? 1 : 0
+            })
         }).done(function(resp) {
             $('#bulk-sonarr-status').removeClass('d-none').text('Inviati a Sonarr. Aggiorno la lista...');
             setTimeout(function() {
