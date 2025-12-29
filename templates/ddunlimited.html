@@ -1,0 +1,268 @@
+{% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/ddunlimited.css') }}">
+{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <div>
+    <h2 class="mb-0"><i class="bi bi-collection"></i> DDUnlimited</h2>
+    <small class="text-muted">Cerca nelle liste di segnalazioni e aggiungi ai wanted.</small>
+  </div>
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <div class="text-muted small" id="ddu-cache-status"
+         data-count="{{ cache_status.count }}"
+         data-updated="{{ cache_status.updated_at or '' }}">
+      Cache: {{ cache_status.count }} elementi
+    </div>
+    <button class="btn btn-outline-primary btn-sm" id="ddu-refresh-cache" type="button">
+      <i class="bi bi-arrow-clockwise me-1"></i>Ricarica cache
+    </button>
+    <button class="btn btn-outline-secondary btn-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#ddunlimitedSourcesModal">
+      <i class="bi bi-list-task"></i> Gestisci liste
+    </button>
+  </div>
+</div>
+
+<form method="post" class="mb-4">
+  <div class="input-group">
+    <input type="text"
+           class="form-control"
+           name="search_query"
+           placeholder="Cerca un titolo su DDUnlimited..."
+           value="{{ query or '' }}">
+    <button class="btn btn-primary" type="submit">
+      <i class="bi bi-search"></i> Cerca
+    </button>
+  </div>
+</form>
+
+{% if results %}
+<div class="table-responsive">
+  <table class="table table-striped table-bordered align-middle ddu-results-table">
+    <thead class="table-light">
+      <tr>
+        <th>Titolo</th>
+        <th style="width: 90px;">Anno</th>
+        <th style="width: 110px;">Tipo</th>
+        <th style="width: 110px;">Categoria</th>
+        <th style="width: 120px;">Qualita</th>
+        <th style="width: 120px;">Lingua</th>
+        <th style="width: 140px;">Fonte</th>
+        <th style="width: 160px;">Azioni</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for item in results %}
+      <tr>
+        <td>
+          <div class="fw-semibold">{{ item.title }}</div>
+          {% if item.info %}
+            <div class="ddu-results-info">{{ item.info }}</div>
+          {% endif %}
+          <a class="ddu-results-link" href="{{ item.detail_url }}" target="_blank" rel="noopener">
+            Apri su DDUnlimited
+          </a>
+        </td>
+        <td>{{ item.year or "" }}</td>
+        <td>{{ item.media_type or "" }}</td>
+        <td>{{ item.category or "" }}</td>
+        <td>{{ item.quality or "" }}</td>
+        <td>{{ item.language or "" }}</td>
+        <td>{{ item.source_name or "" }}</td>
+        <td>
+          {% if item.status == "wanted" %}
+            <button class="btn btn-sm btn-outline-secondary ddu-action-btn-mini ddu-action-btn-wanted" disabled title="Gia nei wanted">
+              <i class="bi bi-bookmark-check"></i>
+              <span class="ddu-action-label">Wanted</span>
+            </button>
+          {% else %}
+            <form method="post" action="{{ url_for('ddunlimited.add_wanted_ddunlimited') }}">
+              <input type="hidden" name="title" value="{{ item.title }}">
+              <input type="hidden" name="year" value="{{ item.year or '' }}">
+              <input type="hidden" name="media_type" value="{{ item.media_type or '' }}">
+              <input type="hidden" name="category" value="{{ item.category or '' }}">
+              <input type="hidden" name="language" value="{{ item.language or '' }}">
+              <input type="hidden" name="detail_url" value="{{ item.detail_url }}">
+              <input type="hidden" name="topic_id" value="{{ item.topic_id or '' }}">
+              <input type="hidden" name="search_query" value="{{ query or '' }}">
+              <button class="btn btn-sm btn-success ddu-action-btn-mini ddu-action-btn-wanted" type="submit" title="Aggiungi ai wanted">
+                <i class="bi bi-bookmark-plus"></i>
+                <span class="ddu-action-label">Wanted</span>
+              </button>
+            </form>
+          {% endif %}
+          <button class="btn btn-sm btn-outline-primary ddu-ed2k-btn ddu-action-btn-mini ddu-action-btn-icon"
+                  type="button"
+                  data-detail-url="{{ item.detail_url|e }}"
+                  data-detail-title="{{ item.title|e }}"
+                  data-detail-info="{{ item.info|default('', true)|e }}">
+            <i class="bi bi-list"></i>
+          </button>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="modal fade" id="dduEd2kModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="ddu-ed2k-title">Link eMule</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="ddu-ed2k-loading text-muted small">Caricamento...</div>
+        <div class="ddu-ed2k-content d-none">
+          <div class="mb-2 d-flex justify-content-between align-items-center">
+            <div class="text-muted small" id="ddu-ed2k-count"></div>
+            <button type="button" class="btn btn-sm btn-outline-secondary ddu-action-btn-mini" id="ddu-ed2k-copy">
+              <i class="bi bi-clipboard me-1"></i>Copia tutti
+            </button>
+          </div>
+          <div class="mb-3 ddu-listing-info d-none">
+            <h6 class="text-uppercase text-muted small">Info lista</h6>
+            <div id="ddu-ed2k-listing" class="ddu-detail-line"></div>
+          </div>
+          <div class="card shadow-sm border-0">
+            <div class="card-body">
+              <h6 class="text-uppercase text-muted small mb-2">Link eMule</h6>
+              <div id="ddu-ed2k-links" class="list-group"></div>
+            </div>
+          </div>
+          <div class="mt-2 d-none" id="ddu-ed2k-manual">
+            <div class="text-muted small mb-1">Copia manuale (seleziona e copia):</div>
+            <textarea id="ddu-ed2k-textarea" class="form-control form-control-sm" rows="6" readonly></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="ddunlimitedSourcesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Liste DDUnlimited</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body ddu-modal-body">
+        <div class="alert alert-info ddu-alert">
+          Gestisci qui le liste usate per la ricerca. Aggiornale quando DDUnlimited le sostituisce.
+        </div>
+        <div class="ddu-toolbar">
+          <div class="input-group input-group-sm ddu-filter">
+            <span class="input-group-text"><i class="bi bi-funnel"></i></span>
+            <input type="text" class="form-control" placeholder="Filtra liste..." id="ddu-filter">
+          </div>
+          <button type="button" class="btn btn-sm btn-outline-primary" id="ddu-test-all">
+            <i class="bi bi-activity me-1"></i>Testa tutte
+          </button>
+        </div>
+        <div class="table-responsive ddu-table-wrap">
+          <table class="table table-sm align-middle ddu-table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Tipo</th>
+                <th>URL</th>
+                <th>Rel.</th>
+                <th>On</th>
+                <th class="text-end">Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="ddu-sources-body">
+              <tr><td colspan="6" class="text-muted">Caricamento...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <hr class="my-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+          <div class="fw-semibold" id="ddu-form-mode">Nuova lista</div>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="ddu-new">
+            Nuova lista
+          </button>
+        </div>
+        <form id="ddu-source-form" class="row g-2 ddu-form">
+          <input type="hidden" id="ddu-source-id">
+          <div class="col-12 col-md-4">
+            <label class="form-label">Nome</label>
+            <input type="text" class="form-control form-control-sm" id="ddu-name" required>
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label">Media type</label>
+            <select class="form-select form-select-sm" id="ddu-media-type" required>
+              <option value="movie">movie</option>
+              <option value="series">series</option>
+            </select>
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label">Categoria</label>
+            <input type="text" class="form-control form-control-sm" id="ddu-category" placeholder="anime/film/tv">
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label">Attiva</label>
+            <select class="form-select form-select-sm" id="ddu-enabled">
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">URL</label>
+            <input type="url" class="form-control form-control-sm" id="ddu-url" required>
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">Qualita</label>
+            <input type="text" class="form-control form-control-sm" id="ddu-quality">
+          </div>
+          <div class="col-12 col-md-6">
+            <label class="form-label">Lingua</label>
+            <input type="text" class="form-control form-control-sm" id="ddu-language">
+          </div>
+          <div class="col-12 d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-sm btn-primary ddu-form-btn" id="ddu-save-btn" data-action="add">
+              <i class="bi bi-plus-circle me-1"></i>Aggiungi
+            </button>
+            <button type="submit" class="btn btn-sm btn-outline-primary ddu-form-btn" id="ddu-save-continue-btn" data-action="add-continue">
+              <i class="bi bi-plus-square me-1"></i>Aggiungi e continua
+            </button>
+            <button type="submit" class="btn btn-sm btn-success d-none ddu-form-btn" id="ddu-update-btn" data-action="update">
+              <i class="bi bi-save me-1"></i>Salva modifiche
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary ddu-form-btn" id="ddu-reset">
+              <i class="bi bi-eraser me-1"></i>Reset campi
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="dduCacheModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Ricarica cache</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-2">
+          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+          <div id="ddu-cache-progress" class="small">Avvio ricarica...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='scripts/ddunlimited.js') }}"></script>
+<script src="{{ url_for('static', filename='scripts/ddunlimited_search.js') }}"></script>
+<script src="{{ url_for('static', filename='scripts/ddunlimited_ed2k.js') }}"></script>
+{% endblock %}

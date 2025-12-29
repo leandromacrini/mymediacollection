@@ -450,3 +450,102 @@ class MediaDB:
                 updated += cur.rowcount
         self.conn.commit()
         return updated
+
+    def get_ddunlimited_sources(self, include_disabled: bool = False) -> list[dict]:
+        query = """
+            SELECT
+                id, name, url, media_type, category, quality, language,
+                enabled, last_count, last_checked, created_at, updated_at
+            FROM ddunlimited_sources
+        """
+        params = []
+        if not include_disabled:
+            query += " WHERE enabled = TRUE"
+        query += " ORDER BY name"
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, params)
+            return cur.fetchall()
+
+    def add_ddunlimited_source(self, data: dict) -> int | None:
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO ddunlimited_sources
+                    (name, url, media_type, category, quality, language, enabled)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                data.get("name"),
+                data.get("url"),
+                data.get("media_type"),
+                data.get("category"),
+                data.get("quality"),
+                data.get("language"),
+                data.get("enabled", True)
+            ))
+            row = cur.fetchone()
+            self.conn.commit()
+            return row[0] if row else None
+
+    def update_ddunlimited_source(self, source_id: int, data: dict) -> bool:
+        allowed = ["name", "url", "media_type", "category", "quality", "language", "enabled"]
+        fields = []
+        values = []
+        for key in allowed:
+            if key in data:
+                fields.append(f"{key}=%s")
+                values.append(data[key])
+        if not fields:
+            return False
+        fields.append("updated_at=now()")
+        values.append(source_id)
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE ddunlimited_sources SET {', '.join(fields)} WHERE id=%s",
+                values
+            )
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def delete_ddunlimited_source(self, source_id: int) -> bool:
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM ddunlimited_sources WHERE id=%s",
+                (source_id,)
+            )
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def get_ddunlimited_source(self, source_id: int) -> dict | None:
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    id, name, url, media_type, category, quality, language,
+                    enabled, last_count, last_checked, created_at, updated_at
+                FROM ddunlimited_sources
+                WHERE id = %s
+            """, (source_id,))
+            return cur.fetchone()
+
+    def get_ddunlimited_source_by_url(self, url: str) -> dict | None:
+        if not url:
+            return None
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    id, name, url, media_type, category, quality, language,
+                    enabled, last_count, last_checked, created_at, updated_at
+                FROM ddunlimited_sources
+                WHERE url = %s
+                LIMIT 1
+            """, (url,))
+            return cur.fetchone()
+
+    def set_ddunlimited_source_stats(self, source_id: int, last_count: int) -> bool:
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE ddunlimited_sources
+                SET last_count=%s, last_checked=now(), updated_at=now()
+                WHERE id=%s
+            """, (last_count, source_id))
+            self.conn.commit()
+            return cur.rowcount > 0

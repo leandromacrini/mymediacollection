@@ -1,0 +1,180 @@
+.modal-dialog.modal-xl {
+  max-width: min(1200px, 96vw);
+}
+
+.ddu-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: calc(100vh - 220px);
+  overflow: hidden;
+}
+
+.ddu-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ddu-filter {
+  max-width: 360px;
+}
+
+.ddu-table-wrap {
+  flex: 1 1 auto;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+}
+
+.ddu-alert {
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.ddu-table {
+  font-size: 0.85rem;
+}
+
+.ddu-table {
+  margin-bottom: 0;
+}
+
+.ddu-table th,
+.ddu-table td {
+  padding: 0.3rem 0.5rem;
+  vertical-align: middle;
+}
+
+.ddu-table td.text-truncate {
+  max-width: 520px;
+}
+
+.ddu-action-btn {
+  min-width: 92px;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+.ddu-action-btn .spinner-border {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.ddu-form .form-label {
+  font-size: 0.8rem;
+  margin-bottom: 0.15rem;
+}
+
+.ddu-form .form-control,
+.ddu-form .form-select {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.85rem;
+}
+
+.ddu-form-btn {
+  min-width: 160px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#ddu-cache-status {
+  padding: 0.2rem 0.5rem;
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+
+.ddu-results-table {
+  font-size: 0.85rem;
+}
+
+.ddu-results-table th,
+.ddu-results-table td {
+  padding: 0.25rem 0.5rem;
+  vertical-align: middle;
+}
+
+.ddu-results-table .fw-semibold {
+  font-size: 0.88rem;
+}
+
+.ddu-results-info {
+  font-size: 0.75rem;
+  color: #6b7280;
+  line-height: 1.2;
+  margin-top: 0.15rem;
+}
+
+.ddu-action-btn-mini {
+  padding: 0.15rem 0.45rem;
+  font-size: 0.78rem;
+  line-height: 1.1;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.ddu-results-table td form {
+  display: inline-block;
+  margin-right: 0.35rem;
+}
+
+.ddu-action-btn-icon {
+  width: 32px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ddu-action-label {
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.ddu-detail-line {
+  padding: 0.35rem 0.5rem;
+  background: #f8fafc;
+  border-radius: 0.4rem;
+  border: 1px solid #e5e7eb;
+}
+
+.ddu-ed2k-loading {
+  padding: 0.75rem;
+}
+
+.ddu-link-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ddu-link-index {
+  min-width: 2.2rem;
+  text-align: right;
+  color: #9ca3af;
+  font-size: 0.78rem;
+  flex: 0 0 auto;
+}
+
+.ddu-link-text {
+  display: inline-block;
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ddu-link-size {
+  white-space: nowrap;
+  color: #6b7280;
+  font-size: 0.78rem;
+}

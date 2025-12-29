@@ -52,3 +52,24 @@ def build_animeworld_media(form) -> Media:
         original_title=original_title if original_title else None,
         language=language if language else None
     )
+
+
+def build_ddunlimited_media(form) -> Media:
+    original_title = form.get("original_title")
+    language = form.get("language")
+    year_raw = form.get("year")
+    try:
+        year = int(year_raw) if year_raw else None
+    except ValueError:
+        year = None
+    return Media(
+        id=None,
+        title=form["title"],
+        year=year,
+        media_type=form.get("media_type") or "movie",
+        category=form.get("category"),
+        source="ddunlimited",
+        source_ref=form.get("detail_url"),
+        original_title=original_title if original_title else None,
+        language=language if language else None
+    )

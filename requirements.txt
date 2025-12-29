@@ -3,3 +3,4 @@ requests>=2.31
 flask>=2.3
 beautifulsoup4>=4.13
 animeworld>=1.6.7
+rapidfuzz>=3.6

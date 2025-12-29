@@ -2,6 +2,8 @@ import os
 import requests
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
+from api import ddunlimited_api
+from api import emule_api
 from api import radarr_api
 from api import sonarr_api
 from app.extensions import db
@@ -47,10 +49,25 @@ def _test_animeworld(cfg: dict[str, str]) -> tuple[bool, str]:
     return (r.status_code < 400, f"AnimeWorld status: {r.status_code}")
 
 
+def _test_ddunlimited(cfg: dict[str, str]) -> tuple[bool, str]:
+    url = (cfg.get("ddunlimited_url") or "").rstrip("/")
+    username = cfg.get("ddunlimited_username") or ""
+    password = cfg.get("ddunlimited_password") or ""
+    return ddunlimited_api.ddu_test_connection(
+        url=url,
+        username=username,
+        password=password
+    )
+
+
 def _test_emule(cfg: dict[str, str]) -> tuple[bool, str]:
+    url = (cfg.get("emule_url") or "").rstrip("/")
+    password = cfg.get("emule_password") or ""
+    if url:
+        return emule_api.emule_test_connection(url=url, password=password)
     incoming = cfg.get("emule_incoming_dir") or ""
     if not incoming:
-        return False, "Cartella incoming mancante."
+        return False, "Emule WebUI URL o cartella incoming mancanti."
     if os.path.exists(incoming):
         return True, "Cartella incoming trovata."
     return False, "Cartella incoming non trovata."
@@ -103,6 +120,8 @@ def settings_view():
                 ok, message = _test_plex(cfg)
             elif service.name == "Anime World":
                 ok, message = _test_animeworld(cfg)
+            elif service.name == "DDUnlimited":
+                ok, message = _test_ddunlimited(cfg)
             elif service.name == "Emule":
                 ok, message = _test_emule(cfg)
 

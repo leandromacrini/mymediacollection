@@ -126,7 +126,13 @@ VALUES
 ('Anime World', 'Import media da Anime World', TRUE)
 ON CONFLICT (name) DO NOTHING;
 
--- 5️⃣ Emule
+-- 5️⃣ DDUnlimited
+INSERT INTO services (name, description, enabled)
+VALUES 
+('DDUnlimited', 'Ricerca liste e segnalazioni DDUnlimited', TRUE)
+ON CONFLICT (name) DO NOTHING;
+
+-- 6️⃣ Emule
 INSERT INTO services (name, description, enabled)
 VALUES 
 ('Emule', 'Monitoraggio download Emule', TRUE)
@@ -196,9 +202,34 @@ INSERT INTO service_settings (service_id, key, label, value, value_type, require
 SELECT id, 'animeworld_url', 'Anime World URL', '', 'string', TRUE FROM services WHERE name='Anime World'
 ON CONFLICT (service_id, key) DO NOTHING;
 
+-- DDUnlimited
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'ddunlimited_url', 'DDUnlimited URL', 'https://ddunlimited.net', 'string', TRUE FROM services WHERE name='DDUnlimited'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'ddunlimited_username', 'DDUnlimited Username', '', 'string', FALSE FROM services WHERE name='DDUnlimited'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'ddunlimited_password', 'DDUnlimited Password', '', 'password', FALSE FROM services WHERE name='DDUnlimited'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'ddunlimited_refresh_days', 'DDUnlimited Refresh (days)', '90', 'int', FALSE FROM services WHERE name='DDUnlimited'
+ON CONFLICT (service_id, key) DO NOTHING;
+
 -- Emule
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
 SELECT id, 'emule_incoming_dir', 'Cartella Emule Incoming', '', 'string', TRUE FROM services WHERE name='Emule'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'emule_url', 'Emule WebUI URL', '', 'string', FALSE FROM services WHERE name='Emule'
+ON CONFLICT (service_id, key) DO NOTHING;
+
+INSERT INTO service_settings (service_id, key, label, value, value_type, required)
+SELECT id, 'emule_password', 'Emule WebUI Password', '', 'password', FALSE FROM services WHERE name='Emule'
 ON CONFLICT (service_id, key) DO NOTHING;
 
 INSERT INTO service_settings (service_id, key, label, value, value_type, required)
@@ -207,3 +238,30 @@ ON CONFLICT (service_id, key) DO NOTHING;
 
 CREATE INDEX IF NOT EXISTS idx_service_settings_service
 ON service_settings(service_id);
+
+-- DDUnlimited list sources
+CREATE TABLE IF NOT EXISTS ddunlimited_sources (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    media_type TEXT NOT NULL,     -- movie | series
+    category TEXT,                -- anime | film | tv
+    quality TEXT,
+    language TEXT,
+    enabled BOOLEAN DEFAULT TRUE,
+    last_count INTEGER DEFAULT 0,
+    last_checked TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_ddunlimited_sources_enabled
+ON ddunlimited_sources(enabled);
+
+INSERT INTO ddunlimited_sources (name, url, media_type, category, quality, enabled)
+VALUES
+('Serie TV HD', 'https://ddunlimited.net/viewtopic.php?t=3747331', 'series', 'tv', 'HD', TRUE),
+('Movie HD', 'https://ddunlimited.net/viewtopic.php?t=3747498', 'movie', 'film', 'HD', TRUE),
+('Serie TV A-Z', 'https://ddunlimited.net/viewtopic.php?t=61463', 'series', 'tv', NULL, TRUE),
+('Movie A', 'https://ddunlimited.net/viewtopic.php?f=1988&t=3941486', 'movie', 'film', NULL, TRUE)
+ON CONFLICT (url) DO NOTHING;
