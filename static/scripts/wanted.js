@@ -400,6 +400,10 @@ function initWantedUI() {
                 );
             }
         } else if (source === 'tvdb') {
+            $row.attr('data-has-tvdb', '1');
+            $row.data('has-tvdb', '1');
+            $row.attr('data-tvdb-id', externalId);
+            $row.data('tvdb-id', externalId);
             if (mediaType === 'series') {
                 $row.attr('data-missing-external', '0');
                 $row.data('missing-external', '0');
@@ -410,6 +414,13 @@ function initWantedUI() {
             if (!idCell.find('.badge-imdb').length) {
                 idCell.append(
                     '<a class="badge badge-imdb text-decoration-none" href="' + link + '" target="_blank" rel="noopener" data-bs-toggle="tooltip" data-bs-placement="top" title="' + externalId + '">TVDB</a>'
+                );
+            }
+            var $tvActions = $row.find('.wanted-actions');
+            if (!$tvActions.find('.sonarr-add-btn').length) {
+                $tvActions.find('.btn-outline-secondary:disabled').first().replaceWith(
+                    '<button class="btn btn-sm btn-sonarr d-inline-flex align-items-center gap-1 sonarr-add-btn" data-bs-toggle="modal" data-bs-target="#sonarrAddModal" data-media-id="' + mediaId + '" data-title="' + title + '">' +
+                    '<i class="bi bi-cloud-download"></i>Sonarr</button>'
                 );
             }
         } else if (source === 'anilist') {
@@ -430,6 +441,8 @@ function initWantedUI() {
         if (info) {
             info.hasTmdb = source === 'tmdb' ? true : info.hasTmdb;
             info.tmdbId = source === 'tmdb' ? externalId : info.tmdbId;
+            info.hasTvdb = source === 'tvdb' ? true : info.hasTvdb;
+            info.tvdbId = source === 'tvdb' ? externalId : info.tvdbId;
             info.missingExternal = false;
         }
         table.draw(false);

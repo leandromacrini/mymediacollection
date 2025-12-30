@@ -11,9 +11,14 @@
 </head>
 <body>
 <div class="mmc-shell">
-    <aside class="mmc-sidebar">
-        <a class="mmc-brand" href="/">My Media Manager</a><!--  -->
-        <nav class="nav flex-column mmc-nav">
+    <aside class="mmc-sidebar" id="mmc-sidebar">
+        <div class="mmc-sidebar-header">
+            <a class="mmc-brand" href="/">My Media Manager</a>
+            <button class="mmc-menu-toggle" type="button" aria-expanded="false" aria-controls="mmc-nav">
+                <i class="bi bi-list"></i>
+            </button>
+        </div>
+        <nav class="nav flex-column mmc-nav" id="mmc-nav">
             <a class="nav-link" href="/"><i class="bi bi-grid-1x2"></i> Dashboard</a>
             <a class="nav-link" href="/radarr"><i class="bi bi-film"></i> Radarr</a>
             <a class="nav-link" href="/sonarr"><i class="bi bi-tv"></i> Sonarr</a>

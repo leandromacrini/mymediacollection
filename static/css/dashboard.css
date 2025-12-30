@@ -1,1 +1,40 @@
+.dashboard-cards .card {
+  border-radius: 0.75rem;
+}
 
+.dashboard-cards .card-body {
+  padding: 0.85rem 0.95rem;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.dashboard-cards .dashboard-card-compact {
+  padding: 0.65rem 0.7rem;
+  min-height: 110px;
+}
+
+.dashboard-cards h6 {
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.dashboard-cards h3 {
+  margin-bottom: 0.25rem;
+  font-size: 1.35rem;
+}
+
+.dashboard-cards .dashboard-card-compact h6 {
+  font-size: 0.72rem;
+}
+
+.dashboard-cards .dashboard-card-compact h3 {
+  font-size: 1.1rem;
+}
+
+.dashboard-cards .small {
+  font-size: 0.72rem;
+}

@@ -71,7 +71,12 @@
 
                     <!-- MEDIA -->
                     <td>
-                        <div class="wanted-title">{{ item.title }}</div>
+                        <button type="button"
+                                class="btn btn-link p-0 text-start wanted-title-link"
+                                data-bs-toggle="modal"
+                                data-bs-target="#wantedInfoModal{{ item.id }}">
+                            <span class="wanted-title">{{ item.title }}</span>
+                        </button>
                         {% if item.original_title and item.original_title != item.title %}
                             <div class="wanted-meta">Orig: {{ item.original_title }}</div>
                         {% endif %}
@@ -319,7 +324,7 @@
 
                             <div class="modal-header">
                                 <h5 class="modal-title">
-                            Identifica su TVDB - {{ item.title }}
+                            Identifica su TVDB - {{ item.title }}{% if item.year %} ({{ item.year }}){% endif %}
                                 </h5>
                                 <button type="button" class="btn-close"
                                         data-bs-dismiss="modal"></button>
@@ -355,6 +360,110 @@
                                 </button>
                             </div>
 
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ================= INFO MODAL ================= -->
+                <div class="modal fade"
+                     id="wantedInfoModal{{ item.id }}"
+                     tabindex="-1"
+                     aria-hidden="true">
+                    <div class="modal-dialog modal-md modal-dialog-centered modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    {{ item.title }}{% if item.year %} ({{ item.year }}){% endif %}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <div class="d-flex flex-wrap gap-2 mb-3">
+                                    <span class="badge bg-secondary">{{ item.media_type }}</span>
+                                    {% if item.category %}<span class="badge bg-info text-dark">{{ item.category }}</span>{% endif %}
+                                    {% if item.language %}<span class="badge bg-light text-dark">{{ item.language }}</span>{% endif %}
+                                    {% if item.status %}<span class="badge bg-dark">{{ item.status }}</span>{% endif %}
+                                </div>
+                                <div class="small text-muted mb-2">Dettagli</div>
+                                <div class="border rounded p-2 mb-3">
+                                    <div><strong>Titolo:</strong> {{ item.title }}</div>
+                                    {% if item.original_title and item.original_title != item.title %}
+                                        <div><strong>Originale:</strong> {{ item.original_title }}</div>
+                                    {% endif %}
+                                    {% if item.year %}
+                                        <div><strong>Anno:</strong> {{ item.year }}</div>
+                                    {% endif %}
+                                    <div><strong>Sorgente:</strong> {{ item.source }}</div>
+                                    {% if item.source_ref %}
+                                        <div><strong>Riferimento:</strong> {{ item.source_ref }}</div>
+                                    {% endif %}
+                                </div>
+                                <div class="small text-muted mb-2">Riferimenti</div>
+                                <div class="border rounded p-2">
+                                    {% if item.external_ids %}
+                                        {% for key, val in item.external_ids.items() %}
+                                            {% if val %}
+                                                <div class="d-flex align-items-center justify-content-between gap-2">
+                                                    <div><strong>{{ key }}:</strong> {{ val }}</div>
+                                                    {% if key == 'tvdb_link' %}
+                                                        <a class="btn btn-sm btn-outline-secondary"
+                                                           href="{{ val }}"
+                                                           target="_blank"
+                                                           rel="noopener">Apri</a>
+                                                    {% elif key == 'tmdb' %}
+                                                        {% if item.media_type == "series" %}
+                                                            {% set tmdb_url = "https://www.themoviedb.org/tv/" ~ val %}
+                                                        {% else %}
+                                                            {% set tmdb_url = "https://www.themoviedb.org/movie/" ~ val %}
+                                                        {% endif %}
+                                                        <a class="btn btn-sm btn-outline-secondary"
+                                                           href="{{ tmdb_url }}"
+                                                           target="_blank"
+                                                           rel="noopener">Apri</a>
+                                                    {% elif key == 'tvdb' %}
+                                                        <a class="btn btn-sm btn-outline-secondary"
+                                                           href="https://thetvdb.com/series/{{ val }}"
+                                                           target="_blank"
+                                                           rel="noopener">Apri</a>
+                                                    {% elif key == 'anilist' %}
+                                                        <a class="btn btn-sm btn-outline-secondary"
+                                                           href="https://anilist.co/anime/{{ val }}"
+                                                           target="_blank"
+                                                           rel="noopener">Apri</a>
+                                                    {% elif key == 'ddunlimited_link' %}
+                                                        <a class="btn btn-sm btn-outline-secondary"
+                                                           href="{{ val }}"
+                                                           target="_blank"
+                                                           rel="noopener">Apri</a>
+                                                    {% elif key == 'radarr' %}
+                                                        {% if radarr_url and tmdb_id %}
+                                                            <a class="btn btn-sm btn-outline-secondary"
+                                                               href="{{ radarr_url }}/movie/{{ tmdb_id }}"
+                                                               target="_blank"
+                                                               rel="noopener">Apri</a>
+                                                        {% endif %}
+                                                    {% elif key == 'sonarr' %}
+                                                        {% if sonarr_url and tvdb_id %}
+                                                            {% set sonarr_slug = sonarr_slug_map.get(tvdb_id|string) %}
+                                                            {% if sonarr_slug %}
+                                                                <a class="btn btn-sm btn-outline-secondary"
+                                                                   href="{{ sonarr_url }}/series/{{ sonarr_slug }}"
+                                                                   target="_blank"
+                                                                   rel="noopener">Apri</a>
+                                                            {% endif %}
+                                                        {% endif %}
+                                                    {% endif %}
+                                                </div>
+                                            {% endif %}
+                                        {% endfor %}
+                                    {% else %}
+                                        <div class="text-muted">Nessun riferimento salvato.</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="modal-footer">
+                                <button class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                            </div>
                         </div>
                     </div>
                 </div>

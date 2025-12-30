@@ -68,6 +68,15 @@ def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia
         result.append(media)
     return result
 
+def sonarr_get_series_stats(db: db_core.MediaDB | None = None) -> list[dict]:
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/series", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)
+    if r.status_code != 200:
+        print(f"Error fetching series stats from Sonarr: {r.status_code}")
+        return []
+    data = r.json()
+    return data if isinstance(data, list) else []
+
 def sonarr_get_root_folders(db: db_core.MediaDB | None = None) -> list[dict]:
     cfg = _get_config(db)
     r = requests.get(f"{cfg['url']}/api/v3/rootfolder", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)

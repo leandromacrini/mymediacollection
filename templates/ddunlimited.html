@@ -61,9 +61,6 @@
           {% if item.info %}
             <div class="ddu-results-info">{{ item.info }}</div>
           {% endif %}
-          <a class="ddu-results-link" href="{{ item.detail_url }}" target="_blank" rel="noopener">
-            Apri su DDUnlimited
-          </a>
         </td>
         <td>{{ item.year or "" }}</td>
         <td>{{ item.media_type or "" }}</td>
@@ -75,7 +72,7 @@
           {% if item.status == "wanted" %}
             <button class="btn btn-sm btn-outline-secondary ddu-action-btn-mini ddu-action-btn-wanted" disabled title="Gia nei wanted">
               <i class="bi bi-bookmark-check"></i>
-              <span class="ddu-action-label">Wanted</span>
+              <span class="ddu-action-label">Want</span>
             </button>
           {% else %}
             <form method="post" action="{{ url_for('ddunlimited.add_wanted_ddunlimited') }}">
@@ -89,7 +86,7 @@
               <input type="hidden" name="search_query" value="{{ query or '' }}">
               <button class="btn btn-sm btn-success ddu-action-btn-mini ddu-action-btn-wanted" type="submit" title="Aggiungi ai wanted">
                 <i class="bi bi-bookmark-plus"></i>
-                <span class="ddu-action-label">Wanted</span>
+                <span class="ddu-action-label">Want</span>
               </button>
             </form>
           {% endif %}
@@ -97,9 +94,17 @@
                   type="button"
                   data-detail-url="{{ item.detail_url|e }}"
                   data-detail-title="{{ item.title|e }}"
-                  data-detail-info="{{ item.info|default('', true)|e }}">
+                  data-detail-info="{{ item.info|default('', true)|e }}"
+                  title="Visualizza lista link ed2k">
             <i class="bi bi-list"></i>
           </button>
+          <a class="btn btn-sm btn-outline-secondary ddu-action-btn-mini ddu-action-btn-icon"
+             href="{{ item.detail_url }}"
+             target="_blank"
+             rel="noopener"
+             title="Apri su DDUnlimited">
+            <i class="bi bi-link-45deg"></i>
+          </a>
         </td>
       </tr>
     {% endfor %}

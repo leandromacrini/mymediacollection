@@ -120,7 +120,23 @@
 
 .ddu-results-table td form {
   display: inline-block;
-  margin-right: 0.35rem;
+}
+
+.ddu-results-table td:last-child {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.ddu-results-table td:last-child .btn,
+.ddu-results-table td:last-child form {
+  vertical-align: middle;
+}
+
+.ddu-results-table td:last-child .btn + .btn,
+.ddu-results-table td:last-child form + .btn,
+.ddu-results-table td:last-child .btn + form,
+.ddu-results-table td:last-child form + form {
+  margin-left: 0.35rem;
 }
 
 .ddu-action-btn-icon {

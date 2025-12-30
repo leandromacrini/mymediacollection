@@ -17,7 +17,7 @@ $(document).ready(function() {
     var plexTable = $('#plex_table').DataTable({
         paging: true,
         ordering: true,
-        order: [[1, "desc"]],
+        order: [[2, "desc"]],
         pageLength: 25,
         autoWidth: false,
         deferRender: true,
@@ -36,6 +36,16 @@ $(document).ready(function() {
             }
         },
         columns: [
+            {
+                data: 'rating_key',
+                orderable: false,
+                render: function(data, type, row) {
+                    if (type === 'display') {
+                        return '<input class="form-check-input plex-select" type="checkbox" value="' + (data || '') + '" aria-label="Seleziona">';
+                    }
+                    return data || '';
+                }
+            },
             {
                 data: 'title',
                 render: function(data, type, row) {
@@ -90,8 +100,16 @@ $(document).ready(function() {
             {
                 data: 'rating_key',
                 orderable: false,
-                render: function(data) {
-                    return '<button class="btn btn-sm btn-outline-primary plex-detail-btn" type="button" data-rating-key="' + data + '">Dettagli</button>';
+                render: function(data, type, row) {
+                    var disabled = row.in_wanted ? ' disabled' : '';
+                    var wantedLabel = row.in_wanted ? 'In wanted' : 'Aggiungi';
+                    return (
+                        '<div class="d-flex flex-column gap-1">' +
+                        '<button class="btn btn-sm btn-outline-primary plex-detail-btn" type="button" data-rating-key="' + data + '">Dettagli</button>' +
+                        '<button class="btn btn-sm btn-outline-success plex-wanted-btn" type="button" data-title="' + (row.title || '') + '" data-year="' + (row.year || '') + '" data-media-type="' + (row.media_type || '') + '" data-library="' + (row.library || '') + '" data-rating-key="' + data + '" data-tmdb-id="' + (row.tmdb_id || '') + '" data-tvdb-id="' + (row.tvdb_id || '') + '"' + disabled + '>' +
+                        '<i class="bi bi-bookmark-plus me-1"></i>' + wantedLabel + '</button>' +
+                        '</div>'
+                    );
                 }
             }
         ],
@@ -134,13 +152,13 @@ $(document).ready(function() {
     });
 
     $('#plex-title-search').on('input', function() {
-        plexTable.column(0).search(this.value || '').draw();
+        plexTable.column(1).search(this.value || '').draw();
     });
     $('#plex-type-filter').on('change', function() {
-        plexTable.column(2).search(this.value || '', true, false).draw();
+        plexTable.column(3).search(this.value || '', true, false).draw();
     });
     $('#plex-library-filter').on('change', function() {
-        plexTable.column(3).search(this.value || '', true, false).draw();
+        plexTable.column(4).search(this.value || '', true, false).draw();
     });
 
     function fmtDuration(ms) {
@@ -209,6 +227,121 @@ $(document).ready(function() {
             .catch(function() {
                 $('#plex-detail-loading').addClass('d-none');
                 $('#plex-detail-error').removeClass('d-none');
+            });
+    });
+
+    function getSelectedRows() {
+        var rows = [];
+        $('#plex_table tbody .plex-select:checked').each(function() {
+            var row = $(this).closest('tr');
+            var data = plexTable.row(row).data();
+            if (data) {
+                rows.push(data);
+            }
+        });
+        return rows;
+    }
+
+    function updateBulkState() {
+        var count = $('#plex_table tbody .plex-select:checked').length;
+        $('#plex-wanted-bulk').prop('disabled', count === 0);
+    }
+
+    $(document).on('change', '#plex-select-all', function() {
+        var checked = $(this).is(':checked');
+        $('#plex_table tbody .plex-select').prop('checked', checked);
+        updateBulkState();
+    });
+
+    $(document).on('change', '.plex-select', function() {
+        updateBulkState();
+        var total = $('#plex_table tbody .plex-select').length;
+        var checked = $('#plex_table tbody .plex-select:checked').length;
+        $('#plex-select-all').prop('checked', total > 0 && total === checked);
+    });
+
+    $(document).on('click', '.plex-wanted-btn', function() {
+        var btn = $(this);
+        if (btn.prop('disabled')) {
+            return;
+        }
+        var payload = {
+            title: btn.data('title'),
+            year: btn.data('year'),
+            media_type: btn.data('media-type'),
+            library: btn.data('library'),
+            rating_key: btn.data('rating-key'),
+            tmdb_id: btn.data('tmdb-id'),
+            tvdb_id: btn.data('tvdb-id')
+        };
+        btn.prop('disabled', true).text('Invio...');
+        fetch('/api/plex/wanted/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (!data || !data.ok) {
+                    throw new Error('error');
+                }
+                var row = btn.closest('tr');
+                var rowData = plexTable.row(row).data();
+                if (rowData) {
+                    rowData.in_wanted = true;
+                    plexTable.row(row).data(rowData).invalidate();
+                }
+            })
+            .catch(function() {
+                btn.prop('disabled', false).text('Aggiungi');
+            });
+    });
+
+    $('#plex-wanted-bulk').on('click', function() {
+        var rows = getSelectedRows();
+        if (!rows.length) {
+            return;
+        }
+        var items = rows.map(function(row) {
+            return {
+                title: row.title,
+                year: row.year,
+                media_type: row.media_type,
+                library: row.library,
+                rating_key: row.rating_key,
+                tmdb_id: row.tmdb_id,
+                tvdb_id: row.tvdb_id
+            };
+        });
+        var btn = $(this);
+        btn.prop('disabled', true).text('Invio...');
+        fetch('/api/plex/wanted/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items: items })
+        })
+            .then(function(resp) { return resp.json(); })
+            .then(function(data) {
+                if (!data || !data.ok) {
+                    throw new Error('error');
+                }
+                $('#plex_table tbody .plex-select:checked').each(function() {
+                    var row = $(this).closest('tr');
+                    var rowData = plexTable.row(row).data();
+                    if (rowData) {
+                        rowData.in_wanted = true;
+                        plexTable.row(row).data(rowData).invalidate();
+                    }
+                    $(this).prop('checked', false);
+                });
+                $('#plex-select-all').prop('checked', false);
+                updateBulkState();
+            })
+            .catch(function() {
+                updateBulkState();
+            })
+            .finally(function() {
+                btn.html('<i class="bi bi-bookmark-plus me-1"></i>Importa selezionati');
             });
     });
 });

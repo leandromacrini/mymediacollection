@@ -35,3 +35,15 @@ document.querySelectorAll('.toast').forEach(function(el) {
   var toast = new bootstrap.Toast(el, { autohide: true });
   toast.show();
 });
+
+var menuToggle = document.querySelector('.mmc-menu-toggle');
+if (menuToggle) {
+  menuToggle.addEventListener('click', function() {
+    var sidebar = document.getElementById('mmc-sidebar');
+    if (!sidebar) {
+      return;
+    }
+    var isOpen = sidebar.classList.toggle('mmc-open');
+    menuToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+  });
+}

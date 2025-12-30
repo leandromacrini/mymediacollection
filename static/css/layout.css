@@ -12,11 +12,28 @@
     flex-direction: column;
     gap: 18px;
 }
+.mmc-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
 .mmc-brand {
     color: #fff;
     font-weight: 600;
     text-decoration: none;
     font-size: 1.1rem;
+}
+.mmc-menu-toggle {
+    border: 0;
+    background: #2d333b;
+    color: #fff;
+    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    display: none;
+    align-items: center;
+    justify-content: center;
 }
 .mmc-nav .nav-link {
     color: #c9d1d9;
@@ -47,15 +64,19 @@
     }
     .mmc-sidebar {
         width: 100%;
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: space-between;
+        gap: 12px;
+        padding: 14px 14px;
+    }
+    .mmc-menu-toggle {
+        display: inline-flex;
     }
     .mmc-nav {
         width: 100%;
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+    }
+    .mmc-sidebar.mmc-open .mmc-nav {
         display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
     }
 }

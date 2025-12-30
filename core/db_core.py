@@ -1,4 +1,5 @@
 import os
+from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from dataclasses import dataclass, field
@@ -15,6 +16,7 @@ class Media:
     source_ref: Optional[str] = None
     original_title: Optional[str] = None
     language: Optional[str] = None
+    created_at: Optional[datetime] = None
 
     external_ids: dict[str, str] = field(default_factory=dict)
     status: Optional[str] = None
@@ -208,6 +210,7 @@ class MediaDB:
                     source_ref=r["source_ref"],
                     original_title=r.get("original_title"),
                     language=r.get("language"),
+                    created_at=r.get("created_at"),
                     status=None
                 )
 
@@ -273,6 +276,21 @@ class MediaDB:
                 WHERE ei.id IS NULL
             """)
             return cur.fetchone()[0]
+
+    def count_media_by_source(self, sources: list[str]) -> dict[str, int]:
+        if not sources:
+            return {}
+        placeholders = ", ".join(["%s"] * len(sources))
+        query = f"""
+            SELECT source, COUNT(*) AS total
+            FROM media_items
+            WHERE source IN ({placeholders})
+            GROUP BY source
+        """
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query, sources)
+            rows = cur.fetchall()
+        return {row["source"]: row["total"] for row in rows}
     
     def get_last_imports(self, limit=5):
         return self.get_wanted_items(limit=limit)
@@ -305,6 +323,7 @@ class MediaDB:
             source_ref=rows[0]["source_ref"],
             original_title=rows[0].get("original_title"),
             language=rows[0].get("language"),
+            created_at=rows[0].get("created_at"),
             status=None
         )
 

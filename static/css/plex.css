@@ -9,21 +9,23 @@
     text-overflow: ellipsis;
 }
 #plex_table th:nth-child(1),
-#plex_table td:nth-child(1) { width: 40%; }
+#plex_table td:nth-child(1) { width: 4%; text-align: center; }
 #plex_table th:nth-child(2),
-#plex_table td:nth-child(2) { width: 8%; }
+#plex_table td:nth-child(2) { width: 34%; }
 #plex_table th:nth-child(3),
-#plex_table td:nth-child(3) { width: 10%; }
+#plex_table td:nth-child(3) { width: 7%; }
 #plex_table th:nth-child(4),
-#plex_table td:nth-child(4) { width: 18%; }
+#plex_table td:nth-child(4) { width: 9%; }
 #plex_table th:nth-child(5),
-#plex_table td:nth-child(5) { width: 6%; text-align: center; }
+#plex_table td:nth-child(5) { width: 16%; }
 #plex_table th:nth-child(6),
 #plex_table td:nth-child(6) { width: 6%; text-align: center; }
 #plex_table th:nth-child(7),
 #plex_table td:nth-child(7) { width: 6%; text-align: center; }
 #plex_table th:nth-child(8),
 #plex_table td:nth-child(8) { width: 6%; text-align: center; }
+#plex_table th:nth-child(9),
+#plex_table td:nth-child(9) { width: 8%; text-align: center; }
 .plex-skeleton {
     display: grid;
     gap: 10px;

@@ -4,57 +4,112 @@
 {% endblock %}
 {% block content %}
 
-<h2 class="mb-4"><i class="bi bi-grid-1x2 me-2"></i>Dashboard</h2>
+<div class="d-flex align-items-center justify-content-between mb-4">
+    <h2 class="mb-0"><i class="bi bi-grid-1x2 me-2"></i>Dashboard</h2>
+    <div id="dashboard-loading" class="d-flex align-items-center gap-2 text-muted small">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        Caricamento dati...
+    </div>
+</div>
 
 <!-- KPI CARDS -->
-<div class="row text-center mb-4">
-    <div class="col-md-4">
+<div class="row text-center mb-4 g-4 dashboard-cards">
+    <div class="col-xl-2 col-md-4">
         <div class="card shadow-sm">
-            <div class="card-body">
-                <h6>Total Media</h6>
-                <h3>{{ counts.total }}</h3>
+            <div class="card-body dashboard-card-compact">
+                <h6>Media Totali Wanted</h6>
+                <h3 id="dashboard-total">...</h3>
+                <div class="small text-muted">Fonte: DB</div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-2">
+    <div class="col-xl-2 col-md-4">
         <div class="card shadow-sm">
-            <div class="card-body text-success">
-                <h6>Present</h6>
-                <h3>{{ counts.present }}</h3>
+            <div class="card-body text-success dashboard-card-compact">
+                <h6>Presenti sui downloader</h6>
+                <h3 id="dashboard-present">...</h3>
+                <div class="small text-muted">Fonte: DB</div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-2">
+    <div class="col-xl-2 col-md-4">
         <div class="card shadow-sm">
-            <div class="card-body text-warning">
-                <h6>Missing</h6>
-                <h3>{{ counts.missing }}</h3>
+            <div class="card-body text-warning dashboard-card-compact">
+                <h6>Assenti sui downloader</h6>
+                <h3 id="dashboard-missing">...</h3>
+                <div class="small text-muted">Fonte: DB</div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-2">
+    <div class="col-xl-3 col-md-6">
         <div class="card shadow-sm">
             <div class="card-body text-primary">
                 <h6>Radarr</h6>
-                <h3>{{ radarr_info.total }}</h3>
-                <div class="small text-muted">Mon: {{ radarr_info.monitored }} · Scar: {{ radarr_info.downloaded }}</div>
+                <h3 id="dashboard-radarr-total">...</h3>
+                <div class="small text-muted">
+                    Monitorati: <span id="dashboard-radarr-monitored">...</span> | Scaricati: <span id="dashboard-radarr-downloaded">...</span>
+                </div>
             </div>
         </div>
     </div>
 
-    <div class="col-md-2">
+    <div class="col-xl-3 col-md-6">
         <div class="card shadow-sm">
             <div class="card-body text-info">
                 <h6>Sonarr</h6>
-                <h3>{{ sonarr_info.total }}</h3>
-                <div class="small text-muted">Mon: {{ sonarr_info.monitored }} · Non mon: {{ sonarr_info.unmonitored }}</div>
+                <h3 id="dashboard-sonarr-total">...</h3>
+                <div class="small text-muted">
+                    Monitorati: <span id="dashboard-sonarr-monitored">...</span> | Scaricati: <span id="dashboard-sonarr-downloaded">...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row text-center mb-4 g-4 dashboard-cards">
+
+    <div class="col-xl-3 col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body text-secondary">
+                <h6>Wanted from AnimeWorld</h6>
+                <h3 id="dashboard-wanted-aw">...</h3>
+                <div class="small text-muted">Fonte: DB</div>
             </div>
         </div>
     </div>
 
+    <div class="col-xl-3 col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body text-secondary">
+                <h6>Wanted from DDUnlimited</h6>
+                <h3 id="dashboard-wanted-ddu">...</h3>
+                <div class="small text-muted">Fonte: DB</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body text-secondary">
+                <h6>Wanted from Plex DB</h6>
+                <h3 id="dashboard-wanted-plex">...</h3>
+                <div class="small text-muted">Fonte: DB</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+        <div class="card shadow-sm">
+            <div class="card-body text-secondary">
+                <h6>Imported from Text</h6>
+                <h3 id="dashboard-wanted-text">...</h3>
+                <div class="small text-muted">Fonte: DB</div>
+            </div>
+        </div>
+    </div>
 </div>
 <!-- LAST IMPORTS -->
 <div class="row mb-4">
@@ -68,16 +123,17 @@
                     <th>Imported</th>
                 </tr>
             </thead>
-            <tbody>
-                {% for i in last_imports %}
-                <tr>
-                    <td>{{ i.title }}</td>
-                    <td>{{ i.source }}</td>
-                    <td>{{ i.created_at }}</td>
+            <tbody id="dashboard-last-imports">
+                <tr class="placeholder-glow">
+                    <td><span class="placeholder col-6"></span></td>
+                    <td><span class="placeholder col-4"></span></td>
+                    <td><span class="placeholder col-5"></span></td>
                 </tr>
-                {% else %}
-                <tr><td colspan="3" class="text-muted">No imports yet</td></tr>
-                {% endfor %}
+                <tr class="placeholder-glow">
+                    <td><span class="placeholder col-5"></span></td>
+                    <td><span class="placeholder col-3"></span></td>
+                    <td><span class="placeholder col-4"></span></td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -87,29 +143,25 @@
 <div class="row">
     <div class="col-md-6">
         <h5>Last Wanted Movies</h5>
-        <ul class="list-group">
-            {% for m in wanted_movies %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>{{ m.title }} {% if m.year %}({{ m.year }}){% endif %}</span>
-                <span class="badge bg-warning text-dark">Missing</span>
+        <ul class="list-group" id="dashboard-wanted-movies">
+            <li class="list-group-item placeholder-glow">
+                <span class="placeholder col-8"></span>
             </li>
-            {% else %}
-            <li class="list-group-item text-muted">No missing movies</li>
-            {% endfor %}
+            <li class="list-group-item placeholder-glow">
+                <span class="placeholder col-6"></span>
+            </li>
         </ul>
     </div>
 
     <div class="col-md-6">
         <h5>Last Wanted Series</h5>
-        <ul class="list-group">
-            {% for s in wanted_series %}
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-                <span>{{ s.title }} {% if s.year %}({{ s.year }}){% endif %}</span>
-                <span class="badge bg-warning text-dark">Missing</span>
+        <ul class="list-group" id="dashboard-wanted-series">
+            <li class="list-group-item placeholder-glow">
+                <span class="placeholder col-8"></span>
             </li>
-            {% else %}
-            <li class="list-group-item text-muted">No missing series</li>
-            {% endfor %}
+            <li class="list-group-item placeholder-glow">
+                <span class="placeholder col-6"></span>
+            </li>
         </ul>
     </div>
 </div>
