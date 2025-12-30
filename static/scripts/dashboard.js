@@ -83,7 +83,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
       setText("dashboard-wanted-aw", wantedSources.animeworld ?? "0");
       setText("dashboard-wanted-ddu", wantedSources.ddunlimited ?? "0");
-      setText("dashboard-wanted-plex", wantedSources.plex ?? "0");
+      setText("dashboard-wanted-plex", wantedSources.plex_db ?? "0");
       setText("dashboard-wanted-text", wantedSources.text ?? "0");
 
       renderLastImports(data.last_imports || []);

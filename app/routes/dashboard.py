@@ -33,7 +33,7 @@ def dashboard_data():
         if episode_count and episode_file_count >= episode_count:
             sonarr_downloaded += 1
 
-    wanted_sources = db.count_media_by_source(["animeworld", "ddunlimited", "plex", "text"])
+    wanted_sources = db.count_media_by_source(["animeworld", "ddunlimited", "plex db", "text"])
 
     def serialize_media(item):
         return {
@@ -58,7 +58,7 @@ def dashboard_data():
         "wanted_sources": {
             "animeworld": wanted_sources.get("animeworld", 0),
             "ddunlimited": wanted_sources.get("ddunlimited", 0),
-            "plex": wanted_sources.get("plex", 0),
+            "plex_db": wanted_sources.get("plex db", 0),
             "text": wanted_sources.get("text", 0)
         },
         "last_imports": [serialize_media(item) for item in data["last_imports"]],
