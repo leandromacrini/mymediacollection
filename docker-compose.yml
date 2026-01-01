@@ -1,0 +1,37 @@
+name: bolognanerd
+
+networks:
+  bolognanerd_network:
+    external: true
+    name: bolognanerd_bolognanerd_network
+
+volumes:
+  nas_data_nfs:
+    external: true
+
+services:
+  my-media-collection:
+    build: .
+    image: my-media-collection:latest
+    container_name: my-media-collection
+    restart: unless-stopped
+    networks:
+      - bolognanerd_network
+    env_file:
+      - .env
+    ports:
+      - "5000:5000"
+      - "5678:5678"
+    volumes:
+      - ./:/app
+      - type: volume
+        source: nas_data_nfs
+        target: /data
+        volume:
+          subpath: Configurazioni/my-media-collection/data
+      - type: volume
+        source: nas_data_nfs
+        target: /uploads
+        volume:
+          subpath: Configurazioni/my-media-collection/uploads
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "flask", "--app", "main.py", "--debug", "run", "--host", "0.0.0.0", "--port", "5000"]

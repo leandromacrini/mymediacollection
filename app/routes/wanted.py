@@ -116,15 +116,35 @@ def wanted_lookup_tmdb(media_item_id):
             }])
     tmdb_query = (raw_query or "").strip()
     tmdb_id = None
+    tmdb_slug = None
+    is_explicit_tmdb = False
     if tmdb_query:
         import re
         slug_match = re.match(r"^(\d+)-(.+)", tmdb_query)
         if slug_match:
             tmdb_id = slug_match.group(1)
+            tmdb_slug = slug_match.group(2)
+            is_explicit_tmdb = True
         else:
             url_match = re.search(r"/movie/(\d+)", tmdb_query)
             if url_match:
                 tmdb_id = url_match.group(1)
+                is_explicit_tmdb = True
+                slug_part = re.search(rf"/movie/{tmdb_id}-([A-Za-z0-9-]+)", tmdb_query)
+                if slug_part:
+                    tmdb_slug = slug_part.group(1)
+    if tmdb_id and tmdb_id.isdigit() and is_explicit_tmdb:
+        display_title = None
+        if tmdb_slug:
+            display_title = tmdb_slug.replace("-", " ").strip()
+        if not display_title:
+            display_title = item.title
+        return json_items([{
+            "title": display_title,
+            "year": item.year,
+            "external_id": int(tmdb_id),
+            "imdb_id": None
+        }])
     if tmdb_id and tmdb_id.isdigit():
         tmdb_match = radarr_api.radarr_lookup_by_tmdb(int(tmdb_id), db)
         if tmdb_match and tmdb_match.tmdb_id:
@@ -134,6 +154,7 @@ def wanted_lookup_tmdb(media_item_id):
                 "external_id": tmdb_match.tmdb_id,
                 "imdb_id": tmdb_match.imdb_id
             }])
+        return json_items([])
 
     def normalize_query(value: str | None) -> str | None:
         if not value:
@@ -276,8 +297,6 @@ def wanted_add_radarr(media_item_id):
     root_folder = data.get("root_folder")
     profile_id = data.get("profile_id")
     enable_search = data.get("enable_search")
-    monitor_specials_raw = data.get("monitor_specials")
-    monitor_specials = str(monitor_specials_raw).strip().lower() in ("1", "true", "yes", "on")
     if not root_folder or not profile_id:
         return jsonify({"ok": False, "error": "missing_options"}), 400
 
@@ -299,7 +318,6 @@ def wanted_add_radarr(media_item_id):
         profile_id=int(profile_id),
         root_folder=root_folder,
         enable_search=bool(enable_search),
-        monitor_specials=bool(monitor_specials),
         db=db
     )
     if added:
@@ -362,8 +380,6 @@ def wanted_bulk_add_radarr():
     root_folder = data.get("root_folder")
     profile_id = data.get("profile_id")
     enable_search = data.get("enable_search")
-    monitor_specials_raw = data.get("monitor_specials")
-    monitor_specials = str(monitor_specials_raw).strip().lower() in ("1", "true", "yes", "on")
     if not media_ids or not root_folder or not profile_id:
         return jsonify({"ok": False, "error": "missing_parameters"}), 400
 
