@@ -234,6 +234,20 @@ def parse_list_page(html: str, source: DDUListSource, base_url: str) -> list[DDU
     items: list[DDUItem] = []
     seen_topics = set()
 
+    def _extract_info_text(anchor_tag) -> str | None:
+        parts = []
+        for sibling in anchor_tag.next_siblings:
+            if getattr(sibling, "name", None) == "br":
+                break
+            if isinstance(sibling, str):
+                parts.append(sibling)
+                continue
+            text = sibling.get_text(" ", strip=True)
+            if text:
+                parts.append(text)
+        info = " ".join(" ".join(parts).split()).strip()
+        return info or None
+
     for anchor in soup.find_all("a", href=True, class_="postlink-local"):
         href = anchor.get("href") or ""
         if href.startswith("#"):
@@ -253,10 +267,7 @@ def parse_list_page(html: str, source: DDUListSource, base_url: str) -> list[DDU
         if topic_id:
             seen_topics.add(topic_id)
 
-        info_text = None
-        sibling_span = anchor.find_next_sibling("span")
-        if sibling_span:
-            info_text = sibling_span.get_text(" ", strip=True)
+        info_text = _extract_info_text(anchor)
         quality = source.quality or _parse_quality(info_text)
         language = source.language or _parse_language(info_text)
         year = _parse_year(title)

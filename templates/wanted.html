@@ -18,7 +18,7 @@
     Selezionati: <span id="wanted-count-selected">0</span>
 </p>
 
-<div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+<div class="d-flex flex-wrap align-items-center mb-3 wanted-toolbar">
     <div class="input-group input-group-sm" style="max-width: 320px;">
         <span class="input-group-text"><i class="bi bi-search"></i></span>
         <input id="wanted-title-search" type="text" class="form-control" placeholder="Cerca per titolo..." disabled>
@@ -31,27 +31,38 @@
             <option value="series">Series</option>
         </select>
     </div>
-    <button type="button" class="btn btn-sm btn-outline-secondary" id="select-visible-btn" disabled>
-        Seleziona tutti
-    </button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-selection-btn" disabled>
-        Deseleziona
-    </button>
-    <button type="button" class="btn btn-sm btn-danger" id="bulk-delete-btn" data-bs-toggle="modal" data-bs-target="#bulkDeleteModal" disabled>
-        Elimina selezionati
-    </button>
-    <button type="button" class="btn btn-sm btn-outline-primary" id="bulk-radarr-btn" data-bs-toggle="modal" data-bs-target="#bulkRadarrModal" disabled>
-        <i class="bi bi-cloud-download"></i>
-        Invia a Radarr
-    </button>
-    <button type="button" class="btn btn-sm btn-sonarr" id="bulk-sonarr-btn" data-bs-toggle="modal" data-bs-target="#bulkSonarrModal" disabled>
-        <i class="bi bi-cloud-download"></i>
-        Invia a Sonarr
-    </button>
-    <button type="button" class="btn btn-sm btn-outline-secondary" id="bulk-merge-btn" data-bs-toggle="modal" data-bs-target="#mergeWantedModal" disabled>
-        <i class="bi bi-diagram-3"></i>
-        Merge selezionati
-    </button>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Selezione">
+        <button type="button" class="btn btn-outline-secondary" id="select-visible-btn" disabled>
+            <i class="bi bi-check2-square"></i>
+            Tutti
+        </button>
+        <button type="button" class="btn btn-outline-secondary" id="select-downloaded-btn" disabled>
+            <i class="bi bi-check2-circle"></i>
+            Scaricati
+        </button>
+        <button type="button" class="btn btn-outline-secondary" id="clear-selection-btn" disabled>
+            <i class="bi bi-x-square"></i>
+            Deseleziona
+        </button>
+    </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Azioni bulk">
+        <button type="button" class="btn btn-danger" id="bulk-delete-btn" data-bs-toggle="modal" data-bs-target="#bulkDeleteModal" disabled>
+            <i class="bi bi-trash"></i>
+            Elimina
+        </button>
+        <button type="button" class="btn btn-radarr" id="bulk-radarr-btn" data-bs-toggle="modal" data-bs-target="#bulkRadarrModal" disabled>
+            <i class="bi bi-cloud-download"></i>
+            Radarr
+        </button>
+        <button type="button" class="btn btn-sonarr" id="bulk-sonarr-btn" data-bs-toggle="modal" data-bs-target="#bulkSonarrModal" disabled>
+            <i class="bi bi-cloud-download"></i>
+            Sonarr
+        </button>
+        <button type="button" class="btn btn-outline-secondary" id="bulk-merge-btn" data-bs-toggle="modal" data-bs-target="#mergeWantedModal" disabled>
+            <i class="bi bi-diagram-3"></i>
+            Merge
+        </button>
+    </div>
 </div>
 
 <div id="wanted-skeleton" class="wanted-skeleton">

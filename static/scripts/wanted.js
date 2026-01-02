@@ -29,8 +29,8 @@ function initWantedUI() {
         pageLength: 50,
         lengthMenu: [25, 50, 100, 200],
         columnDefs: [
-            { orderable: false, targets: [0, 5, 6] },
-            { searchable: false, targets: [0, 4, 5, 6] }
+            { orderable: false, targets: [0, 6] },
+            { searchable: false, targets: [0, 4, 6] }
         ],
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
@@ -71,6 +71,7 @@ function initWantedUI() {
             tvdbId: $row.data('tvdb-id') || '',
             inRadarr: $row.data('in-radarr') === 1 || $row.data('in-radarr') === '1',
             inSonarr: $row.data('in-sonarr') === 1 || $row.data('in-sonarr') === '1',
+            downloaded: $row.data('downloaded') === 1 || $row.data('downloaded') === '1',
             missingExternal: $row.data('missing-external') === 1 || $row.data('missing-external') === '1',
             title: $row.find('.wanted-title').text().trim()
         };
@@ -246,6 +247,23 @@ function initWantedUI() {
         var nodes = table.rows({ search: 'applied' }).nodes();
         $(nodes).find('.wanted-select').each(function() {
             selectedIds.add($(this).val());
+        });
+        syncSelectionToTable();
+        updateBulkState();
+    });
+
+    $('#select-downloaded-btn').on('click', function() {
+        var nodes = table.rows({ search: 'applied' }).nodes();
+        $(nodes).each(function() {
+            var $row = $(this);
+            var isDownloaded = $row.data('downloaded') === 1 || $row.data('downloaded') === '1';
+            if (!isDownloaded) {
+                return;
+            }
+            var id = $row.find('.wanted-select').val();
+            if (id) {
+                selectedIds.add(id);
+            }
         });
         syncSelectionToTable();
         updateBulkState();
@@ -1045,6 +1063,7 @@ document.addEventListener('DOMContentLoaded', function() {
             $('#wanted-title-search').prop('disabled', false);
             $('#wanted-type-filter').prop('disabled', false);
             $('#select-visible-btn').prop('disabled', false);
+            $('#select-downloaded-btn').prop('disabled', false);
             $('#clear-selection-btn').prop('disabled', false);
             initWantedUI();
         })

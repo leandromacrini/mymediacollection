@@ -28,8 +28,8 @@
                     <th style="width: 90px;">Anno</th>
                     <th>Info</th>
                     <th>Identificazione</th>
+                    <th>Scaricato</th>
                     <th>Azioni</th>
-                    <th class="text-end" style="width: 56px;"></th>
                 </tr>
             </thead>
 
@@ -39,6 +39,8 @@
                 {% set tvdb_id = item.external_ids.get('tvdb') %}
                 {% set in_radarr = tmdb_id and (tmdb_id in radarr_tmdb) %}
                 {% set in_sonarr = tvdb_id and (tvdb_id in sonarr_tvdb) %}
+                {% set radarr_done = tmdb_id and (tmdb_id in radarr_downloaded) %}
+                {% set sonarr_done = tvdb_id and (tvdb_id in sonarr_downloaded) %}
                 {% set missing_external = false %}
                 {% if item.media_type == "movie" and not tmdb_id %}
                     {% set missing_external = true %}
@@ -57,7 +59,8 @@
                     data-tvdb-id="{{ tvdb_id or '' }}"
                     data-in-radarr="{{ '1' if in_radarr else '0' }}"
                     data-in-sonarr="{{ '1' if in_sonarr else '0' }}"
-                    data-missing-external="{{ '1' if missing_external else '0' }}">
+                    data-missing-external="{{ '1' if missing_external else '0' }}"
+                    data-downloaded="{{ '1' if radarr_done or sonarr_done else '0' }}">
 
                     <td class="text-center">
                         <input class="form-check-input wanted-select"
@@ -185,16 +188,25 @@
                 </div>
             </td>
 
+                    <!-- DOWNLOADED -->
+                    <td data-order="{{ 1 if radarr_done or sonarr_done else 0 }}" class="text-center">
+                        {% if radarr_done or sonarr_done %}
+                            <span class="badge bg-success"><i class="bi bi-check-lg"></i></span>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
                     <!-- ACTIONS -->
                     <td>
-                        <div class="d-flex flex-wrap gap-2 wanted-actions">
+                        <div class="d-flex flex-wrap gap-1 wanted-actions">
 
                             {% if item.media_type == "series" %}
-                                <button class="btn btn-sm btn-imdb d-inline-flex align-items-center gap-1"
+                                <button class="btn btn-sm btn-imdb btn-icon d-inline-flex align-items-center justify-content-center"
                                         data-bs-toggle="modal"
-                                        data-bs-target="#tvdbModal{{ item.id }}">
+                                        data-bs-target="#tvdbModal{{ item.id }}"
+                                        title="TVDB">
                                     <i class="bi bi-search"></i>
-                                    TVDB
                                 </button>
                             {% endif %}
 
@@ -205,24 +217,24 @@
                                               data-bs-toggle="tooltip"
                                               data-bs-placement="top"
                                               title="Gia in Sonarr">
-                                            <button class="btn btn-sm btn-sonarr d-inline-flex align-items-center gap-1 sonarr-add-btn"
+                                            <button class="btn btn-sm btn-sonarr btn-icon d-inline-flex align-items-center justify-content-center sonarr-add-btn"
                                                     data-bs-toggle="modal"
                                                     data-bs-target="#sonarrAddModal"
                                                     data-media-id="{{ item.id }}"
                                                     data-title="{{ item.title }}"
+                                                    title="Sonarr"
                                                     disabled>
                                                 <i class="bi bi-cloud-download"></i>
-                                                Sonarr
                                             </button>
                                         </span>
                                     {% else %}
-                                        <button class="btn btn-sm btn-sonarr d-inline-flex align-items-center gap-1 sonarr-add-btn"
+                                        <button class="btn btn-sm btn-sonarr btn-icon d-inline-flex align-items-center justify-content-center sonarr-add-btn"
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#sonarrAddModal"
                                                 data-media-id="{{ item.id }}"
-                                                data-title="{{ item.title }}">
+                                                data-title="{{ item.title }}"
+                                                title="Sonarr">
                                             <i class="bi bi-cloud-download"></i>
-                                            Sonarr
                                         </button>
                                     {% endif %}
                                 {% else %}
@@ -230,21 +242,21 @@
                                           data-bs-toggle="tooltip"
                                           data-bs-placement="top"
                                           title="TVDB mancante">
-                                        <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                                        <button class="btn btn-sm btn-outline-secondary btn-icon d-inline-flex align-items-center justify-content-center"
+                                                title="Sonarr"
                                                 disabled>
                                             <i class="bi bi-cloud-download"></i>
-                                            Sonarr
                                         </button>
                                     </span>
                                 {% endif %}
                             {% endif %}
 
                             {% if item.media_type == "movie" %}
-                                <button class="btn btn-sm btn-tmdb d-inline-flex align-items-center gap-1"
+                                <button class="btn btn-sm btn-tmdb btn-icon d-inline-flex align-items-center justify-content-center"
                                         data-bs-toggle="modal"
-                                        data-bs-target="#tmdbModal{{ item.id }}">
+                                        data-bs-target="#tmdbModal{{ item.id }}"
+                                        title="TMDB">
                                     <i class="bi bi-film"></i>
-                                    TMDB
                                 </button>
                             {% endif %}
 
@@ -255,24 +267,24 @@
                                               data-bs-toggle="tooltip"
                                               data-bs-placement="top"
                                               title="Gia in Radarr">
-                                            <button class="btn btn-sm btn-radarr d-inline-flex align-items-center gap-1 radarr-add-btn"
+                                            <button class="btn btn-sm btn-radarr btn-icon d-inline-flex align-items-center justify-content-center radarr-add-btn"
                                                     data-bs-toggle="modal"
                                                     data-bs-target="#radarrAddModal"
                                                     data-media-id="{{ item.id }}"
                                                     data-title="{{ item.title }}"
+                                                    title="Radarr"
                                                     disabled>
                                                 <i class="bi bi-cloud-download"></i>
-                                                Radarr
                                             </button>
                                         </span>
                                     {% else %}
-                                        <button class="btn btn-sm btn-radarr d-inline-flex align-items-center gap-1 radarr-add-btn"
+                                        <button class="btn btn-sm btn-radarr btn-icon d-inline-flex align-items-center justify-content-center radarr-add-btn"
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#radarrAddModal"
                                                 data-media-id="{{ item.id }}"
-                                                data-title="{{ item.title }}">
+                                                data-title="{{ item.title }}"
+                                                title="Radarr">
                                             <i class="bi bi-cloud-download"></i>
-                                            Radarr
                                         </button>
                                     {% endif %}
                                 {% else %}
@@ -280,36 +292,32 @@
                                           data-bs-toggle="tooltip"
                                           data-bs-placement="top"
                                           title="TMDB mancante">
-                                        <button class="btn btn-sm btn-outline-secondary d-inline-flex align-items-center gap-1"
+                                        <button class="btn btn-sm btn-outline-secondary btn-icon d-inline-flex align-items-center justify-content-center"
+                                                title="Radarr"
                                                 disabled>
                                             <i class="bi bi-cloud-download"></i>
-                                            Radarr
                                         </button>
                                     </span>
                                 {% endif %}
                             {% endif %}
 
                             {% if item.category == "anime" %}
-                                <button class="btn btn-sm btn-anilist d-inline-flex align-items-center gap-1"
+                                <button class="btn btn-sm btn-anilist btn-icon d-inline-flex align-items-center justify-content-center"
                                         data-bs-toggle="modal"
-                                        data-bs-target="#anilistModal{{ item.id }}">
+                                        data-bs-target="#anilistModal{{ item.id }}"
+                                        title="AniList">
                                     <i class="bi bi-collection-play"></i>
-                                    AniList
                                 </button>
                             {% endif %}
 
+                            <span class="wanted-actions-spacer" aria-hidden="true"></span>
+                            <button class="btn btn-sm btn-outline-danger btn-icon d-inline-flex align-items-center justify-content-center"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#deleteWantedModal{{ item.id }}"
+                                    title="Elimina">
+                                <i class="bi bi-x-lg"></i>
+                            </button>
                         </div>
-                    </td>
-
-                    <!-- DELETE -->
-                    <td class="text-end">
-                        <button class="btn btn-sm btn-outline-danger rounded-circle d-inline-flex align-items-center justify-content-center"
-                                style="width: 34px; height: 34px;"
-                                data-bs-toggle="modal"
-                                data-bs-target="#deleteWantedModal{{ item.id }}"
-                                title="Elimina">
-                            <i class="bi bi-x-lg"></i>
-                        </button>
                     </td>
 
                 </tr>
