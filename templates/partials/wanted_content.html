@@ -44,6 +44,15 @@
                 {% set sonarr_done = tvdb_id and (tvdb_id in sonarr_downloaded) %}
                 {% set radarr_root = radarr_root_map.get(tmdb_id|string) if tmdb_id else None %}
                 {% set sonarr_root = sonarr_root_map.get(tvdb_id|string) if tvdb_id else None %}
+                {% set ident_order = '' %}
+                {% if item.media_type == 'movie' %}
+                    {% set ident_order = tmdb_id or '' %}
+                {% else %}
+                    {% set ident_order = tvdb_id or '' %}
+                {% endif %}
+                {% if item.category == 'anime' and item.external_ids.get('anilist') %}
+                    {% set ident_order = item.external_ids.get('anilist') %}
+                {% endif %}
                 {% if item.media_type == "movie" %}
                     {% if in_radarr %}
                         {% set downloaded_count = 1 if radarr_done else 0 %}
@@ -127,7 +136,7 @@
                     </td>
 
             <!-- IDENTIFICATION STATUS -->
-            <td>
+            <td data-order="{{ ident_order }}">
                 <div class="d-flex flex-wrap gap-1">
                     {% if item.external_ids.get('tvdb') %}
                         {% set tvdb_url = item.external_ids.get('tvdb_link') or ("https://thetvdb.com/series/" ~ item.external_ids.get('tvdb')) %}

@@ -81,6 +81,17 @@
             Merge
         </button>
     </div>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Auto match">
+        <button type="button" class="btn btn-outline-secondary" id="bulk-match-tvdb-btn" data-bs-toggle="modal" data-bs-target="#bulkMatchModal" disabled>
+            <i class="bi bi-search"></i>
+            Auto TVDB
+        </button>
+        <button type="button" class="btn btn-outline-secondary" id="bulk-match-tmdb-btn" data-bs-toggle="modal" data-bs-target="#bulkMatchModal" disabled>
+            <i class="bi bi-film"></i>
+            Auto TMDB
+        </button>
+    </div>
+</div>
 </div>
 
 <div id="wanted-skeleton" class="wanted-skeleton">
@@ -92,6 +103,50 @@
 </div>
 <div id="wanted-config" data-radarr-url="{{ radarr_url }}" class="d-none"></div>
 <div id="wanted-content" class="d-none"></div>
+
+<div class="modal fade" id="bulkMatchModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+
+            <div class="modal-header border-0">
+                <h5 class="modal-title" id="bulk-match-title">Auto-match</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+
+            <div class="modal-body">
+                <div class="alert alert-info d-none" id="bulk-match-status">Ricerca in corso...</div>
+                <div class="alert alert-danger d-none" id="bulk-match-error">Errore durante la ricerca.</div>
+                <div class="d-flex flex-wrap gap-3 small text-muted mb-2">
+                    <div>Selezionati: <strong id="bulk-match-selected">0</strong></div>
+                    <div>Con match: <strong id="bulk-match-found">0</strong></div>
+                    <div>Senza match: <strong id="bulk-match-missing">0</strong></div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm table-striped align-middle" id="bulk-match-table">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 40px;"></th>
+                                <th>Titolo</th>
+                                <th style="width: 90px;">Anno</th>
+                                <th style="width: 90px;">Tipo</th>
+                                <th>Query</th>
+                                <th>Match</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="modal-footer border-0">
+                <div class="me-auto small text-muted" id="bulk-match-summary"></div>
+                <button class="btn btn-light" data-bs-dismiss="modal">Annulla</button>
+                <button type="button" class="btn btn-primary" id="bulk-match-confirm">Applica</button>
+            </div>
+
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_scripts %}

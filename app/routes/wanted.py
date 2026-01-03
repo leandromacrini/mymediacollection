@@ -880,3 +880,248 @@ def wanted_merge_commit():
         merged += db.merge_media_items(int(keep_id), [int(mid) for mid in merge_ids])
 
     return jsonify({"ok": True, "merged": merged})
+
+
+def _normalize_lookup_title(value: str | None, year: int | None = None) -> str | None:
+    if not value:
+        return None
+    text = re.sub(r"\([^)]*\)|\[[^\]]*\]|\{[^}]*\}", " ", value)
+    if year:
+        try:
+            text = re.sub(rf"\b{int(year)}\b", " ", text)
+        except (TypeError, ValueError):
+            pass
+    text = re.sub(r"[\"'&,.:;!?/\\\-]", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or None
+
+
+def _build_lookup_queries(item: Media) -> list[str]:
+    candidates: list[str] = []
+    for title in [item.title, item.original_title]:
+        if not title:
+            continue
+        candidates.append(title)
+        cleaned = _normalize_lookup_title(title, item.year)
+        if cleaned and cleaned not in candidates:
+            candidates.append(cleaned)
+    normalized = _normalize_lookup_title(item.title, item.year)
+    if normalized and normalized not in candidates:
+        candidates.append(normalized)
+    return candidates[:5]
+
+
+def _dedupe_candidates(results: list[dict], key_name: str) -> list[dict]:
+    seen = set()
+    deduped = []
+    for item in results:
+        key = item.get(key_name)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        deduped.append(item)
+    return deduped
+
+
+@bp.route("/api/wanted/bulk_lookup/tvdb", methods=["POST"])
+def wanted_bulk_lookup_tvdb():
+    data = request.get_json(silent=True) or {}
+    media_ids = data.get("media_ids") or []
+    if not media_ids:
+        return jsonify({"ok": False, "error": "missing_media_ids"}), 400
+
+    items = []
+    skipped = []
+    for raw_id in media_ids:
+        try:
+            media_id = int(raw_id)
+        except (TypeError, ValueError):
+            skipped.append({"id": raw_id, "reason": "invalid_id"})
+            continue
+        media = db.get_media_item(media_id)
+        if not media:
+            skipped.append({"id": media_id, "reason": "not_found"})
+            continue
+        if media.media_type != "series":
+            skipped.append({"id": media_id, "reason": "not_series"})
+            continue
+        if media.external_ids.get("tvdb"):
+            skipped.append({"id": media_id, "reason": "has_tvdb"})
+            continue
+
+        queries = _build_lookup_queries(media)
+        candidates: list[dict] = []
+        used_query = None
+        for query in queries:
+            lookup = sonarr_api.sonarr_lookup(query, db)
+            if lookup and used_query is None:
+                used_query = query
+            for result in lookup:
+                if not result.tvdb_id:
+                    continue
+                link = f"https://thetvdb.com/series/{result.slug}" if result.slug else None
+                candidates.append({
+                    "external_id": str(result.tvdb_id),
+                    "title": result.title,
+                    "year": result.year,
+                    "link": link
+                })
+        candidates = _dedupe_candidates(candidates, "external_id")[:5]
+        items.append({
+            "media_id": media.id,
+            "title": media.title,
+            "year": media.year,
+            "media_type": media.media_type,
+            "query": used_query or (queries[0] if queries else ""),
+            "candidates": candidates
+        })
+
+    return jsonify({"ok": True, "source": "tvdb", "items": items, "skipped": skipped})
+
+
+@bp.route("/api/wanted/bulk_lookup/tmdb", methods=["POST"])
+def wanted_bulk_lookup_tmdb():
+    data = request.get_json(silent=True) or {}
+    media_ids = data.get("media_ids") or []
+    if not media_ids:
+        return jsonify({"ok": False, "error": "missing_media_ids"}), 400
+
+    items = []
+    skipped = []
+    for raw_id in media_ids:
+        try:
+            media_id = int(raw_id)
+        except (TypeError, ValueError):
+            skipped.append({"id": raw_id, "reason": "invalid_id"})
+            continue
+        media = db.get_media_item(media_id)
+        if not media:
+            skipped.append({"id": media_id, "reason": "not_found"})
+            continue
+        if media.media_type != "movie":
+            skipped.append({"id": media_id, "reason": "not_movie"})
+            continue
+        if media.external_ids.get("tmdb"):
+            skipped.append({"id": media_id, "reason": "has_tmdb"})
+            continue
+
+        queries = _build_lookup_queries(media)
+        candidates: list[dict] = []
+        used_query = None
+        for query in queries:
+            lookup = radarr_api.radarr_lookup(query, media.year, db)
+            if not lookup and media.year:
+                lookup = radarr_api.radarr_lookup(query, None, db)
+            if lookup and used_query is None:
+                used_query = query
+            for result in lookup:
+                if not result.tmdb_id:
+                    continue
+                link = f"https://www.themoviedb.org/movie/{result.tmdb_id}"
+                candidates.append({
+                    "external_id": str(result.tmdb_id),
+                    "title": result.title,
+                    "year": result.year,
+                    "link": link
+                })
+        candidates = _dedupe_candidates(candidates, "external_id")[:5]
+        items.append({
+            "media_id": media.id,
+            "title": media.title,
+            "year": media.year,
+            "media_type": media.media_type,
+            "query": used_query or (queries[0] if queries else ""),
+            "candidates": candidates
+        })
+
+    return jsonify({"ok": True, "source": "tmdb", "items": items, "skipped": skipped})
+
+
+@bp.route("/api/wanted/bulk_external", methods=["POST"])
+def wanted_bulk_external():
+    data = request.get_json(silent=True) or {}
+    items = data.get("items") or []
+    if not items:
+        return jsonify({"ok": False, "error": "missing_items"}), 400
+
+    updated = 0
+    skipped = 0
+    errors = 0
+    updated_items = []
+    for payload in items:
+        media_id = payload.get("media_id")
+        source = payload.get("source")
+        external_id = payload.get("external_id")
+        link = payload.get("link")
+        try:
+            media_id = int(media_id)
+        except (TypeError, ValueError):
+            skipped += 1
+            continue
+        if not source or not external_id:
+            skipped += 1
+            continue
+
+        item = db.get_media_item(media_id)
+        if not item:
+            skipped += 1
+            continue
+
+        if source == "tmdb" and item.media_type != "movie":
+            skipped += 1
+            continue
+        if source == "tvdb" and item.media_type != "series":
+            skipped += 1
+            continue
+        if item.external_ids.get(source):
+            skipped += 1
+            continue
+
+        try:
+            db.add_external_id(media_id, source, str(external_id))
+            if source == "tvdb" and link:
+                db.add_external_id(media_id, "tvdb_link", link)
+        except Exception:
+            errors += 1
+            continue
+
+        in_radarr = False
+        in_sonarr = False
+        if source == "tmdb" and item.media_type == "movie":
+            try:
+                tmdb_val = int(external_id)
+            except (TypeError, ValueError):
+                tmdb_val = None
+            if tmdb_val:
+                existing = radarr_api.radarr_get_by_tmdb(tmdb_val, db)
+                if existing:
+                    db.add_external_id(media_id, "radarr", str(tmdb_val))
+                    in_radarr = True
+        if source == "tvdb" and item.media_type == "series":
+            try:
+                tvdb_val = int(external_id)
+            except (TypeError, ValueError):
+                tvdb_val = None
+            if tvdb_val:
+                existing = sonarr_api.sonarr_get_by_tvdb(tvdb_val, db)
+                if existing:
+                    db.add_external_id(media_id, "sonarr", str(tvdb_val))
+                    in_sonarr = True
+
+        updated += 1
+        updated_items.append({
+            "media_id": media_id,
+            "source": source,
+            "external_id": str(external_id),
+            "link": link,
+            "in_radarr": in_radarr,
+            "in_sonarr": in_sonarr
+        })
+
+    return jsonify({
+        "ok": True,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "items": updated_items
+    })

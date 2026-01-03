@@ -3,6 +3,7 @@ var pendingDownloadAttempts = 0;
 var pendingDownloadTimer = null;
 var MAX_PENDING_DOWNLOAD_ATTEMPTS = 4;
 var PENDING_REFRESH_DELAY_MS = 3500;
+var wantedCustomFilter = null;
 
 function markRowDownloadPendingInRow($row) {
     var $cell = $row.find('td').eq(5);
@@ -118,7 +119,10 @@ function initWantedUI() {
         dom: 'rt<"d-flex justify-content-between align-items-center mt-3"lip>'
     });
 
-    $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
+    $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(function(fn) {
+        return !fn.__wantedFilter;
+    });
+    wantedCustomFilter = function(settings, data, dataIndex) {
         if (settings.nTable.id !== 'wanted_table') {
             return true;
         }
@@ -139,7 +143,9 @@ function initWantedUI() {
             }
         }
         return true;
-    });
+    };
+    wantedCustomFilter.__wantedFilter = true;
+    $.fn.dataTable.ext.search.push(wantedCustomFilter);
 
     function getRowInfo(id) {
         if (!id) {
@@ -354,6 +360,26 @@ function initWantedUI() {
         });
     }
 
+    function getTvdbMatchIds() {
+        return Array.from(selectedIds).filter(function(id) {
+            var info = getRowInfo(id);
+            if (!info) {
+                return false;
+            }
+            return info.mediaType === 'series' && !info.hasTvdb;
+        });
+    }
+
+    function getTmdbMatchIds() {
+        return Array.from(selectedIds).filter(function(id) {
+            var info = getRowInfo(id);
+            if (!info) {
+                return false;
+            }
+            return info.mediaType === 'movie' && !info.hasTmdb;
+        });
+    }
+
     function getRadarrBulkMode() {
         var addIds = getRadarrEligibleIds();
         var updateIds = getRadarrUpdateIds();
@@ -390,6 +416,8 @@ function initWantedUI() {
         var eligibleSonarr = getSonarrEligibleIds();
         var eligibleRadarrUpdate = getRadarrUpdateIds();
         var eligibleSonarrUpdate = getSonarrUpdateIds();
+        var tvdbMatchIds = getTvdbMatchIds();
+        var tmdbMatchIds = getTmdbMatchIds();
         var radarrMode = getRadarrBulkMode();
         var sonarrMode = getSonarrBulkMode();
         var excluded = count - eligible.length;
@@ -407,6 +435,8 @@ function initWantedUI() {
         } else {
             $('#bulk-sonarr-count').text(eligibleSonarr.length);
         }
+        $('#bulk-match-tvdb-btn').prop('disabled', tvdbMatchIds.length === 0);
+        $('#bulk-match-tmdb-btn').prop('disabled', tmdbMatchIds.length === 0);
         $('#bulk-merge-btn').prop('disabled', count === 0);
         if (count === 0) {
             $('#bulk-radarr-btn').prop('disabled', true);
@@ -761,6 +791,13 @@ function initWantedUI() {
             info.tvdbId = source === 'tvdb' ? externalId : info.tvdbId;
             info.missingExternal = false;
         }
+        if (category === 'anime' && source === 'anilist') {
+            idCell.attr('data-order', externalId || '');
+        } else if (mediaType === 'movie') {
+            idCell.attr('data-order', $row.data('tmdb-id') || '');
+        } else {
+            idCell.attr('data-order', $row.data('tvdb-id') || '');
+        }
         table.draw(false);
         updateBulkState();
         updateStatsCounts();
@@ -827,6 +864,209 @@ function initWantedUI() {
         }).fail(function() {
             button.prop('disabled', false).text('Elimina');
         });
+    });
+
+    function updateBulkMatchConfirm() {
+        var selected = 0;
+        $('#bulk-match-table tbody tr').each(function() {
+            var $row = $(this);
+            var checked = $row.find('.bulk-match-check').is(':checked');
+            var selectedId = $row.find('.bulk-match-select').val();
+            if (checked && selectedId) {
+                selected += 1;
+            }
+        });
+        $('#bulk-match-confirm').prop('disabled', selected === 0);
+        $('#bulk-match-summary').text(selected ? ('Da applicare: ' + selected) : '');
+    }
+
+    function updateBulkMatchLink($select) {
+        var $row = $select.closest('tr');
+        var $link = $row.find('.bulk-match-link');
+        var $opt = $select.find('option:selected');
+        var link = $opt.data('link') || '';
+        if (link) {
+            $link.attr('href', link).removeClass('d-none');
+        } else {
+            $link.attr('href', '#').addClass('d-none');
+        }
+    }
+
+    function renderBulkMatchResults(source, items) {
+        var $tbody = $('#bulk-match-table tbody');
+        $tbody.empty();
+        var found = 0;
+        var missing = 0;
+        items.forEach(function(item) {
+            var hasCandidates = item.candidates && item.candidates.length;
+            if (hasCandidates) {
+                found += 1;
+            } else {
+                missing += 1;
+            }
+            var options = ['<option value="">Nessun match</option>'];
+            if (hasCandidates) {
+                item.candidates.forEach(function(candidate) {
+                    var label = candidate.title || '';
+                    if (candidate.year) {
+                        label += ' (' + candidate.year + ')';
+                    }
+                    var link = candidate.link || '';
+                    options.push(
+                        '<option value="' + candidate.external_id + '" data-link="' + link + '">' + label + '</option>'
+                    );
+                });
+            }
+            var checkedAttr = hasCandidates ? ' checked' : '';
+            var queryText = item.query || '';
+            var rowHtml = [
+                '<tr data-media-id="', item.media_id, '" data-source="', source, '">',
+                '<td class="text-center"><input class="form-check-input bulk-match-check" type="checkbox"', checkedAttr, '></td>',
+                '<td>', item.title || '', '</td>',
+                '<td>', item.year || '', '</td>',
+                '<td>', item.media_type || '', '</td>',
+                '<td>', queryText, '</td>',
+                '<td>',
+                '<div class="d-flex align-items-center gap-2">',
+                '<select class="form-select form-select-sm bulk-match-select">', options.join(''), '</select>',
+                '<a class="small text-decoration-none bulk-match-link d-none" target="_blank" rel="noopener">Apri</a>',
+                '</div>',
+                '</td>',
+                '</tr>'
+            ].join('');
+            $tbody.append(rowHtml);
+        });
+        $('#bulk-match-selected').text(items.length);
+        $('#bulk-match-found').text(found);
+        $('#bulk-match-missing').text(missing);
+        $tbody.find('.bulk-match-select').each(function() {
+            var $select = $(this);
+            if ($select.find('option').length > 1) {
+                $select.prop('selectedIndex', 1);
+            }
+            updateBulkMatchLink($select);
+        });
+        updateBulkMatchConfirm();
+    }
+
+    function openBulkMatchModal(source) {
+        var ids = source === 'tvdb' ? getTvdbMatchIds() : getTmdbMatchIds();
+        var title = source === 'tvdb' ? 'Auto-match TVDB' : 'Auto-match TMDB';
+        $('#bulk-match-title').text(title);
+        $('#bulk-match-error').addClass('d-none');
+        $('#bulk-match-status').removeClass('d-none').text('Ricerca in corso...');
+        $('#bulk-match-summary').text('');
+        $('#bulk-match-selected').text('0');
+        $('#bulk-match-found').text('0');
+        $('#bulk-match-missing').text('0');
+        $('#bulk-match-table tbody').empty();
+        $('#bulk-match-confirm').prop('disabled', true);
+
+        if (!ids.length) {
+            $('#bulk-match-status').addClass('d-none');
+            $('#bulk-match-error').removeClass('d-none').text('Nessun elemento selezionato.');
+            return;
+        }
+
+        $('#bulkMatchModal').data('source', source);
+        $.ajax({
+            url: '/api/wanted/bulk_lookup/' + source,
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ media_ids: ids })
+        }).done(function(resp) {
+            $('#bulk-match-status').addClass('d-none');
+            if (!resp || !resp.items) {
+                $('#bulk-match-error').removeClass('d-none').text('Risposta non valida.');
+                return;
+            }
+            renderBulkMatchResults(source, resp.items);
+        }).fail(function() {
+            $('#bulk-match-status').addClass('d-none');
+            $('#bulk-match-error').removeClass('d-none').text('Errore durante la ricerca.');
+        });
+    }
+
+    $('#bulk-match-tvdb-btn').off('click.wanted').on('click.wanted', function() {
+        openBulkMatchModal('tvdb');
+    });
+
+    $('#bulk-match-tmdb-btn').off('click.wanted').on('click.wanted', function() {
+        openBulkMatchModal('tmdb');
+    });
+
+    $(document).off('change.wanted', '.bulk-match-select').on('change.wanted', '.bulk-match-select', function() {
+        updateBulkMatchLink($(this));
+        updateBulkMatchConfirm();
+    });
+
+    $(document).off('change.wanted', '.bulk-match-check').on('change.wanted', '.bulk-match-check', function() {
+        updateBulkMatchConfirm();
+    });
+
+    $('#bulk-match-confirm').off('click.wanted').on('click.wanted', function() {
+        var button = $(this);
+        var source = $('#bulkMatchModal').data('source');
+        var items = [];
+        $('#bulk-match-table tbody tr').each(function() {
+            var $row = $(this);
+            var checked = $row.find('.bulk-match-check').is(':checked');
+            var $select = $row.find('.bulk-match-select');
+            var externalId = $select.val();
+            if (!checked || !externalId) {
+                return;
+            }
+            var link = $select.find('option:selected').data('link') || '';
+            items.push({
+                media_id: $row.data('media-id'),
+                source: source,
+                external_id: externalId,
+                link: link
+            });
+        });
+        if (!items.length) {
+            return;
+        }
+        button.prop('disabled', true).text('Applico...');
+        $.ajax({
+            url: '/api/wanted/bulk_external',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({ items: items })
+        }).done(function(resp) {
+            if (resp && resp.items) {
+                resp.items.forEach(function(item) {
+                    applyExternalUpdate(String(item.media_id), item.source, item.external_id, item.link);
+                    if (item.in_radarr) {
+                        updateRowInRadarr(String(item.media_id));
+                    }
+                    if (item.in_sonarr) {
+                        updateRowInSonarr(String(item.media_id));
+                    }
+                });
+            }
+            button.text('Completato');
+            setTimeout(function() {
+                var modalEl = document.getElementById('bulkMatchModal');
+                if (modalEl) {
+                    var modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) {
+                        modal.hide();
+                    }
+                }
+            }, 800);
+        }).fail(function() {
+            button.prop('disabled', false).text('Applica');
+            $('#bulk-match-error').removeClass('d-none').text('Errore durante il salvataggio.');
+        });
+    });
+
+    $('#bulkMatchModal').off('hidden.bs.modal.wanted').on('hidden.bs.modal.wanted', function() {
+        $('#bulk-match-status').addClass('d-none').text('Ricerca in corso...');
+        $('#bulk-match-error').addClass('d-none').text('Errore durante la ricerca.');
+        $('#bulk-match-summary').text('');
+        $('#bulk-match-confirm').prop('disabled', true).text('Applica');
+        $('#bulk-match-table tbody').empty();
     });
 
     var radarrOptionsCache = null;
