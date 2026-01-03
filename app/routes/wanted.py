@@ -1,3 +1,6 @@
+import os
+import re
+
 from flask import Blueprint, jsonify, redirect, render_template, request, url_for, flash
 
 from api import animeworld_api as aw_api
@@ -32,10 +35,12 @@ def wanted_content():
     radarr_movies = radarr_api.radarr_get_all_movies(db)
     radarr_tmdb = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id}
     radarr_downloaded = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id and m.has_file}
+    radarr_root_map = {str(m.tmdb_id): (m.root_folder or "") for m in radarr_movies if m.tmdb_id}
     sonarr_url = sonarr_api.sonarr_get_client(db)["url"]
     sonarr_series = sonarr_api.sonarr_get_all_series(db)
     sonarr_tvdb = {str(s.tvdb_id) for s in sonarr_series if s.tvdb_id}
     sonarr_slug_map = {str(s.tvdb_id): s.slug for s in sonarr_series if s.tvdb_id and s.slug}
+    sonarr_root_map = {str(s.tvdb_id): (s.root_folder or "") for s in sonarr_series if s.tvdb_id}
     sonarr_series_stats = sonarr_api.sonarr_get_series_stats(db)
     sonarr_downloaded = set()
     sonarr_progress = {}
@@ -53,6 +58,15 @@ def wanted_content():
             }
         if tvdb_id and episode_count and episode_file_count >= episode_count:
             sonarr_downloaded.add(str(tvdb_id))
+    import_paths = {}
+    for item in wanted_list:
+        if item.source != "plex db" or not item.source_ref:
+            continue
+        ref = item.source_ref.replace("/", "\\")
+        match = re.search(r"\\media\\([^\\]+)", ref, re.IGNORECASE)
+        if match:
+            import_paths[item.id] = match.group(1)
+
     radarr_cfg = db.get_service_config("Radarr")
     sonarr_cfg = db.get_service_config("Sonarr")
     return render_template(
@@ -60,11 +74,14 @@ def wanted_content():
         items=wanted_list,
         radarr_tmdb=radarr_tmdb,
         radarr_downloaded=radarr_downloaded,
+        radarr_root_map=radarr_root_map,
         sonarr_url=sonarr_url,
         sonarr_tvdb=sonarr_tvdb,
         sonarr_slug_map=sonarr_slug_map,
         sonarr_downloaded=sonarr_downloaded,
         sonarr_progress=sonarr_progress,
+        sonarr_root_map=sonarr_root_map,
+        import_paths=import_paths,
         radarr_url=radarr_url,
         radarr_defaults={
             "root_folder": radarr_cfg.get("radarr_root_folder"),
@@ -347,6 +364,43 @@ def wanted_add_radarr(media_item_id):
     return jsonify({"ok": False, "error": "radarr_add_failed"}), 500
 
 
+@bp.route("/api/wanted/<int:media_item_id>/radarr/update", methods=["POST"])
+def wanted_update_radarr(media_item_id):
+    item = db.get_media_item(media_item_id)
+    if not item or item.media_type != "movie":
+        return jsonify({"ok": False, "error": "invalid_item"}), 400
+
+    tmdb_id = item.external_ids.get("tmdb")
+    if not tmdb_id:
+        return jsonify({"ok": False, "error": "missing_tmdb"}), 400
+
+    data = request.get_json(silent=True) or {}
+    root_folder = data.get("root_folder")
+    profile_id = data.get("profile_id")
+    enable_search = data.get("enable_search")
+    if not root_folder or not profile_id:
+        return jsonify({"ok": False, "error": "missing_options"}), 400
+
+    movie = radarr_api.radarr_get_by_tmdb_raw(int(tmdb_id), db)
+    if not movie:
+        return jsonify({"ok": False, "error": "not_in_radarr"}), 400
+
+    movie["rootFolderPath"] = root_folder
+    movie["qualityProfileId"] = int(profile_id)
+    current_path = movie.get("path") or ""
+    folder_name = os.path.basename(os.path.normpath(current_path)) if current_path else ""
+    if folder_name:
+        movie["path"] = os.path.join(root_folder, folder_name)
+    ok = radarr_api.radarr_update_movie(movie, db, move_files=True)
+    if not ok:
+        return jsonify({"ok": False, "error": "radarr_update_failed"}), 500
+
+    if enable_search:
+        radarr_api.radarr_trigger_movie_search(int(movie.get("id")), db)
+
+    return jsonify({"ok": True, "status": "updated"})
+
+
 @bp.route("/api/wanted/<int:media_item_id>/sonarr/add", methods=["POST"])
 def wanted_add_sonarr(media_item_id):
     item = db.get_media_item(media_item_id)
@@ -392,6 +446,49 @@ def wanted_add_sonarr(media_item_id):
         db.add_external_id(media_item_id, "sonarr", str(tvdb_id))
         return jsonify({"ok": True, "status": "added"})
     return jsonify({"ok": False, "error": "sonarr_add_failed"}), 500
+
+
+@bp.route("/api/wanted/<int:media_item_id>/sonarr/update", methods=["POST"])
+def wanted_update_sonarr(media_item_id):
+    item = db.get_media_item(media_item_id)
+    if not item or item.media_type != "series":
+        return jsonify({"ok": False, "error": "invalid_item"}), 400
+
+    tvdb_id = item.external_ids.get("tvdb")
+    if not tvdb_id:
+        return jsonify({"ok": False, "error": "missing_tvdb"}), 400
+
+    data = request.get_json(silent=True) or {}
+    root_folder = data.get("root_folder")
+    profile_id = data.get("profile_id")
+    monitor_specials_raw = data.get("monitor_specials")
+    enable_search = data.get("enable_search")
+    if not root_folder or not profile_id:
+        return jsonify({"ok": False, "error": "missing_options"}), 400
+
+    series = sonarr_api.sonarr_get_by_tvdb_raw(int(tvdb_id), db)
+    if not series:
+        return jsonify({"ok": False, "error": "not_in_sonarr"}), 400
+
+    series["rootFolderPath"] = root_folder
+    series["qualityProfileId"] = int(profile_id)
+    current_path = series.get("path") or ""
+    folder_name = os.path.basename(os.path.normpath(current_path)) if current_path else ""
+    if folder_name:
+        series["path"] = os.path.join(root_folder, folder_name)
+    ok = sonarr_api.sonarr_update_series(series, db, move_files=True)
+    if not ok:
+        return jsonify({"ok": False, "error": "sonarr_update_failed"}), 500
+
+    series_id = series.get("id")
+    monitor_specials = str(monitor_specials_raw).strip().lower() in ("1", "true", "yes", "on")
+    if monitor_specials and series_id:
+        sonarr_api.sonarr_set_monitor_all_seasons(series_id, db)
+        sonarr_api.sonarr_monitor_specials_episodes(series_id, db)
+    if enable_search and series_id:
+        sonarr_api.sonarr_trigger_series_search(series_id, db)
+
+    return jsonify({"ok": True, "status": "updated"})
 
 
 @bp.route("/api/wanted/radarr/bulk_add", methods=["POST"])
@@ -466,6 +563,74 @@ def wanted_bulk_add_radarr():
         "skipped": skipped,
         "errors": errors,
         "added_ids": added_ids,
+        "skipped_ids": skipped_ids,
+        "error_ids": error_ids
+    })
+
+
+@bp.route("/api/wanted/radarr/bulk_update", methods=["POST"])
+def wanted_bulk_update_radarr():
+    data = request.get_json(silent=True) or {}
+    media_ids = data.get("media_ids") or []
+    root_folder = data.get("root_folder")
+    profile_id = data.get("profile_id")
+    enable_search = data.get("enable_search")
+    if not media_ids or not root_folder or not profile_id:
+        return jsonify({"ok": False, "error": "missing_parameters"}), 400
+
+    updated = 0
+    skipped = 0
+    errors = 0
+    updated_ids = []
+    skipped_ids = []
+    error_ids = []
+    for media_id in media_ids:
+        try:
+            media_id = int(media_id)
+        except (TypeError, ValueError):
+            skipped += 1
+            continue
+
+        item = db.get_media_item(media_id)
+        if not item or item.media_type != "movie":
+            skipped += 1
+            skipped_ids.append(media_id)
+            continue
+
+        tmdb_id = item.external_ids.get("tmdb")
+        if not tmdb_id:
+            skipped += 1
+            skipped_ids.append(media_id)
+            continue
+
+        movie = radarr_api.radarr_get_by_tmdb_raw(int(tmdb_id), db)
+        if not movie:
+            skipped += 1
+            skipped_ids.append(media_id)
+            continue
+
+        movie["rootFolderPath"] = root_folder
+        movie["qualityProfileId"] = int(profile_id)
+        current_path = movie.get("path") or ""
+        folder_name = os.path.basename(os.path.normpath(current_path)) if current_path else ""
+        if folder_name:
+            movie["path"] = os.path.join(root_folder, folder_name)
+        ok = radarr_api.radarr_update_movie(movie, db, move_files=True)
+        if ok:
+            updated += 1
+            updated_ids.append(media_id)
+            if enable_search:
+                radarr_api.radarr_trigger_movie_search(int(movie.get("id")), db)
+        else:
+            errors += 1
+            error_ids.append(media_id)
+
+    return jsonify({
+        "ok": True,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "updated_ids": updated_ids,
         "skipped_ids": skipped_ids,
         "error_ids": error_ids
     })
@@ -548,6 +713,80 @@ def wanted_bulk_add_sonarr():
         "skipped": skipped,
         "errors": errors,
         "added_ids": added_ids,
+        "skipped_ids": skipped_ids,
+        "error_ids": error_ids
+    })
+
+
+@bp.route("/api/wanted/sonarr/bulk_update", methods=["POST"])
+def wanted_bulk_update_sonarr():
+    data = request.get_json(silent=True) or {}
+    media_ids = data.get("media_ids") or []
+    root_folder = data.get("root_folder")
+    profile_id = data.get("profile_id")
+    enable_search = data.get("enable_search")
+    monitor_specials_raw = data.get("monitor_specials")
+    monitor_specials = str(monitor_specials_raw).strip().lower() in ("1", "true", "yes", "on")
+    if not media_ids or not root_folder or not profile_id:
+        return jsonify({"ok": False, "error": "missing_parameters"}), 400
+
+    updated = 0
+    skipped = 0
+    errors = 0
+    updated_ids = []
+    skipped_ids = []
+    error_ids = []
+    for media_id in media_ids:
+        try:
+            media_id = int(media_id)
+        except (TypeError, ValueError):
+            skipped += 1
+            continue
+
+        item = db.get_media_item(media_id)
+        if not item or item.media_type != "series":
+            skipped += 1
+            skipped_ids.append(media_id)
+            continue
+
+        tvdb_id = item.external_ids.get("tvdb")
+        if not tvdb_id:
+            skipped += 1
+            skipped_ids.append(media_id)
+            continue
+
+        series = sonarr_api.sonarr_get_by_tvdb_raw(int(tvdb_id), db)
+        if not series:
+            skipped += 1
+            skipped_ids.append(media_id)
+            continue
+
+        series["rootFolderPath"] = root_folder
+        series["qualityProfileId"] = int(profile_id)
+        current_path = series.get("path") or ""
+        folder_name = os.path.basename(os.path.normpath(current_path)) if current_path else ""
+        if folder_name:
+            series["path"] = os.path.join(root_folder, folder_name)
+        ok = sonarr_api.sonarr_update_series(series, db, move_files=True)
+        if ok:
+            updated += 1
+            updated_ids.append(media_id)
+            series_id = series.get("id")
+            if monitor_specials and series_id:
+                sonarr_api.sonarr_set_monitor_all_seasons(series_id, db)
+                sonarr_api.sonarr_monitor_specials_episodes(series_id, db)
+            if enable_search and series_id:
+                sonarr_api.sonarr_trigger_series_search(series_id, db)
+        else:
+            errors += 1
+            error_ids.append(media_id)
+
+    return jsonify({
+        "ok": True,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "updated_ids": updated_ids,
         "skipped_ids": skipped_ids,
         "error_ids": error_ids
     })

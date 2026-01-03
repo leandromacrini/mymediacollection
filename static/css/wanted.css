@@ -19,11 +19,13 @@
 .wanted-table th:nth-child(4),
 .wanted-table td:nth-child(4) { width: 14%; }
 .wanted-table th:nth-child(5),
-.wanted-table td:nth-child(5) { width: 18%; }
+.wanted-table td:nth-child(5) { width: 17%; }
 .wanted-table th:nth-child(6),
-.wanted-table td:nth-child(6) { width: auto; }
+.wanted-table td:nth-child(6) { width: 8%; }
 .wanted-table th:nth-child(7),
-.wanted-table td:nth-child(7) { width: auto; }
+.wanted-table td:nth-child(7) { width: 14%; }
+.wanted-table th:nth-child(8),
+.wanted-table td:nth-child(8) { width: 8%; }
 .badge-imdb { background: #f5c518; color: #111; }
 .badge-tmdb { background: #01b4e4; color: #06202a; }
 .badge-anilist { background: #02a9ff; color: #06283d; }
@@ -87,6 +89,10 @@
 }
 .wanted-actions .btn i {
     font-size: 0.9em;
+}
+.wanted-actions {
+    flex-wrap: nowrap;
+    gap: 0.35rem;
 }
 .wanted-actions .btn-icon,
 .wanted-table .btn-icon {

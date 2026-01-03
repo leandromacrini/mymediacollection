@@ -66,6 +66,12 @@
 .table.table-striped tbody tr:hover > * {
     background-color: rgba(15, 23, 42, 0.09) !important;
 }
+table.dataTable.table-striped > tbody > tr.odd.selected > *,
+table.dataTable.table-striped > tbody > tr.even.selected > *,
+table.dataTable > tbody > tr.selected > * {
+    background-color: rgba(45, 114, 233, 0.08) !important;
+    box-shadow: none !important;
+}
 @media (max-width: 991.98px) {
     .mmc-shell {
         flex-direction: column;

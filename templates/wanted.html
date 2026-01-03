@@ -1,6 +1,7 @@
 {% extends "layout.html" %}
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="https://cdn.datatables.net/select/1.7.0/css/select.bootstrap5.min.css">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/wanted.css') }}">
 {% endblock %}
 
@@ -23,12 +24,18 @@
         <span class="input-group-text"><i class="bi bi-search"></i></span>
         <input id="wanted-title-search" type="text" class="form-control" placeholder="Cerca per titolo..." disabled>
     </div>
-    <div class="input-group input-group-sm" style="max-width: 220px;">
+    <div class="input-group input-group-sm" style="max-width: 170px;">
         <span class="input-group-text">Tipo</span>
         <select id="wanted-type-filter" class="form-select" disabled>
             <option value="all">Tutti</option>
             <option value="movie">Movie</option>
             <option value="series">Series</option>
+        </select>
+    </div>
+    <div class="input-group input-group-sm" style="max-width: 220px;">
+        <span class="input-group-text">Import</span>
+        <select id="wanted-import-filter" class="form-select" disabled>
+            <option value="all">Tutti</option>
         </select>
     </div>
     <div class="btn-group btn-group-sm" role="group" aria-label="Selezione">
@@ -37,8 +44,7 @@
             Tutti
         </button>
         <button type="button" class="btn btn-outline-secondary" id="select-downloaded-btn" disabled>
-            <i class="bi bi-check2-circle"></i>
-            Scaricati
+            Completi
         </button>
         <button type="button" class="btn btn-outline-secondary" id="select-tmdb-btn" disabled>
             TMDB
@@ -54,7 +60,7 @@
         </button>
         <button type="button" class="btn btn-outline-secondary" id="clear-selection-btn" disabled>
             <i class="bi bi-x-square"></i>
-            Deseleziona
+            Niente
         </button>
     </div>
     <div class="btn-group btn-group-sm" role="group" aria-label="Azioni bulk">
@@ -63,11 +69,11 @@
             Elimina
         </button>
         <button type="button" class="btn btn-radarr" id="bulk-radarr-btn" data-bs-toggle="modal" data-bs-target="#bulkRadarrModal" disabled>
-            <i class="bi bi-cloud-download"></i>
+            <i class="bi bi-cloud-upload"></i>
             Radarr
         </button>
         <button type="button" class="btn btn-sonarr" id="bulk-sonarr-btn" data-bs-toggle="modal" data-bs-target="#bulkSonarrModal" disabled>
-            <i class="bi bi-cloud-download"></i>
+            <i class="bi bi-cloud-upload"></i>
             Sonarr
         </button>
         <button type="button" class="btn btn-outline-secondary" id="bulk-merge-btn" data-bs-toggle="modal" data-bs-target="#mergeWantedModal" disabled>
@@ -92,5 +98,6 @@
 <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 <script src="https://cdn.datatables.net/1.13.6/js/dataTables.bootstrap5.min.js"></script>
+<script src="https://cdn.datatables.net/select/1.7.0/js/dataTables.select.min.js"></script>
 <script src="{{ url_for('static', filename='scripts/wanted.js') }}"></script>
 {% endblock %}

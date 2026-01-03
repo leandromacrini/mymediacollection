@@ -29,6 +29,7 @@
                     <th>Info</th>
                     <th>Identificazione</th>
                     <th>Scaricato</th>
+                    <th>Import Path</th>
                     <th>Azioni</th>
                 </tr>
             </thead>
@@ -41,6 +42,8 @@
                 {% set in_sonarr = tvdb_id and (tvdb_id in sonarr_tvdb) %}
                 {% set radarr_done = tmdb_id and (tmdb_id in radarr_downloaded) %}
                 {% set sonarr_done = tvdb_id and (tvdb_id in sonarr_downloaded) %}
+                {% set radarr_root = radarr_root_map.get(tmdb_id|string) if tmdb_id else None %}
+                {% set sonarr_root = sonarr_root_map.get(tvdb_id|string) if tvdb_id else None %}
                 {% if item.media_type == "movie" %}
                     {% if in_radarr %}
                         {% set downloaded_count = 1 if radarr_done else 0 %}
@@ -55,6 +58,7 @@
                     {% set total_count = progress.get('total') if progress else none %}
                 {% endif %}
                 {% set download_ratio = (downloaded_count / total_count) if total_count and total_count > 0 else 0 %}
+                {% set import_path = import_paths.get(item.id) %}
                 {% set missing_external = false %}
                 {% if item.media_type == "movie" and not tmdb_id %}
                     {% set missing_external = true %}
@@ -73,10 +77,13 @@
                     data-tvdb-id="{{ tvdb_id or '' }}"
                     data-in-radarr="{{ '1' if in_radarr else '0' }}"
                     data-in-sonarr="{{ '1' if in_sonarr else '0' }}"
+                    data-radarr-root="{{ radarr_root or '' }}"
+                    data-sonarr-root="{{ sonarr_root or '' }}"
                     data-missing-external="{{ '1' if missing_external else '0' }}"
                     data-downloaded="{{ '1' if radarr_done or sonarr_done else '0' }}"
                     data-download-current="{{ downloaded_count if total_count is not none else '' }}"
-                    data-download-total="{{ total_count if total_count is not none else '' }}">
+                    data-download-total="{{ total_count if total_count is not none else '' }}"
+                    data-import-path="{{ import_path or '' }}">
 
                     <td class="text-center">
                         <input class="form-check-input wanted-select"
@@ -205,7 +212,16 @@
             </td>
 
                     <!-- DOWNLOADED -->
-                    <td data-order="{{ download_ratio }}" class="text-center">
+                    {% if total_count and total_count > 0 %}
+                        {% if downloaded_count >= total_count %}
+                            {% set download_sort = -2 %}
+                        {% else %}
+                            {% set download_sort = -1 - download_ratio %}
+                        {% endif %}
+                    {% else %}
+                        {% set download_sort = 0 %}
+                    {% endif %}
+                    <td data-order="{{ download_sort }}" class="text-center">
                         {% if total_count and total_count > 0 %}
                             <span class="badge {{ 'bg-success' if downloaded_count >= total_count else 'bg-light text-dark' }}">
                                 {{ downloaded_count }}/{{ total_count }}
@@ -215,8 +231,17 @@
                         {% endif %}
                     </td>
 
+                    <!-- IMPORT PATH -->
+                    <td data-order="{{ import_path or '' }}">
+                        {% if import_path %}
+                            <span class="text-muted">{{ import_path }}</span>
+                        {% else %}
+                            <span class="text-muted">-</span>
+                        {% endif %}
+                    </td>
+
                     <!-- ACTIONS -->
-                    <td>
+                    <td class="wanted-actions-cell">
                         <div class="d-flex flex-wrap gap-1 wanted-actions">
 
                             {% if item.media_type == "series" %}
@@ -234,14 +259,13 @@
                                         <span class="d-inline-flex"
                                               data-bs-toggle="tooltip"
                                               data-bs-placement="top"
-                                              title="Gia in Sonarr">
+                                              title="Aggiorna Sonarr">
                                             <button class="btn btn-sm btn-sonarr btn-icon d-inline-flex align-items-center justify-content-center sonarr-add-btn"
                                                     data-bs-toggle="modal"
                                                     data-bs-target="#sonarrAddModal"
                                                     data-media-id="{{ item.id }}"
                                                     data-title="{{ item.title }}"
-                                                    title="Sonarr"
-                                                    disabled>
+                                                    title="Sonarr">
                                                 <i class="bi bi-cloud-download"></i>
                                             </button>
                                         </span>
@@ -284,14 +308,13 @@
                                         <span class="d-inline-flex"
                                               data-bs-toggle="tooltip"
                                               data-bs-placement="top"
-                                              title="Gia in Radarr">
+                                              title="Aggiorna Radarr">
                                             <button class="btn btn-sm btn-radarr btn-icon d-inline-flex align-items-center justify-content-center radarr-add-btn"
                                                     data-bs-toggle="modal"
                                                     data-bs-target="#radarrAddModal"
                                                     data-media-id="{{ item.id }}"
                                                     data-title="{{ item.title }}"
-                                                    title="Radarr"
-                                                    disabled>
+                                                    title="Radarr">
                                                 <i class="bi bi-cloud-download"></i>
                                             </button>
                                         </span>
@@ -672,7 +695,7 @@
                 <div class="modal-content">
 
                     <div class="modal-header border-0">
-                        <h5 class="modal-title">Invia a Radarr</h5>
+                        <h5 class="modal-title" id="radarr-add-modal-title">Invia a Radarr</h5>
                         <button type="button" class="btn-close"
                                 data-bs-dismiss="modal"></button>
                     </div>
@@ -729,7 +752,7 @@
                 <div class="modal-content">
 
                     <div class="modal-header border-0">
-                        <h5 class="modal-title">Invia a Sonarr</h5>
+                        <h5 class="modal-title" id="sonarr-add-modal-title">Invia a Sonarr</h5>
                         <button type="button" class="btn-close"
                                 data-bs-dismiss="modal"></button>
                     </div>
@@ -782,10 +805,10 @@
         </div>
 
         <!-- ================= RADARR BULK ADD MODAL ================= -->
-        <div class="modal fade"
-             id="bulkRadarrModal"
-             tabindex="-1"
-             aria-hidden="true">
+                <div class="modal fade"
+                     id="bulkRadarrModal"
+                     tabindex="-1"
+                     aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
 
@@ -840,10 +863,10 @@
         </div>
 
         <!-- ================= SONARR BULK ADD MODAL ================= -->
-        <div class="modal fade"
-             id="bulkSonarrModal"
-             tabindex="-1"
-             aria-hidden="true">
+                <div class="modal fade"
+                     id="bulkSonarrModal"
+                     tabindex="-1"
+                     aria-hidden="true">
             <div class="modal-dialog modal-dialog-centered">
                 <div class="modal-content">
 
@@ -898,6 +921,8 @@
                     </div>
 
                 </div>
+
+
             </div>
         </div>
 

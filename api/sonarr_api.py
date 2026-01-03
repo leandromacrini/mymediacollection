@@ -39,6 +39,7 @@ class SonarrMedia:
     monitored: bool = True
     slug: str = None
     seasons: list[dict] | None = None
+    path: str | None = None
 
 # --- API Functions ---
 def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia]:
@@ -63,7 +64,8 @@ def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia
             root_folder=s.get("rootFolderPath", cfg["root_folder"]),
             monitored=s.get("monitored", True),
             slug=s.get("titleSlug", None),
-            seasons=s.get("seasons")
+            seasons=s.get("seasons"),
+            path=s.get("path")
         )
         result.append(media)
     return result
@@ -137,7 +139,8 @@ def sonarr_get_by_tvdb(tvdb_id: int, db: db_core.MediaDB | None = None) -> Sonar
         root_folder=s.get("rootFolderPath"),
         monitored=s.get("monitored", True),
         slug=s.get("titleSlug"),
-        seasons=s.get("seasons")
+        seasons=s.get("seasons"),
+        path=s.get("path")
     )
 
 def sonarr_get_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> SonarrMedia | None:
@@ -165,7 +168,8 @@ def sonarr_get_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> Sonar
         root_folder=s.get("rootFolderPath"),
         monitored=s.get("monitored", True),
         slug=s.get("titleSlug"),
-        seasons=s.get("seasons")
+        seasons=s.get("seasons"),
+        path=s.get("path")
     )
 
 def sonarr_lookup_by_tvdb(tvdb_id: int, db: db_core.MediaDB | None = None) -> SonarrMedia | None:
@@ -201,6 +205,58 @@ def sonarr_get_by_id(series_id: int, db: db_core.MediaDB | None = None) -> dict 
         print(f"Error fetching series by ID {series_id}: {r.status_code}")
         return None
     return r.json()
+
+def sonarr_get_by_tvdb_raw(tvdb_id: int, db: db_core.MediaDB | None = None) -> dict | None:
+    if not tvdb_id:
+        return None
+    cfg = _get_config(db)
+    r = requests.get(
+        f"{cfg['url']}/api/v3/series",
+        headers=cfg["headers"],
+        params={"tvdbId": tvdb_id},
+        timeout=REQUEST_TIMEOUT
+    )
+    if r.status_code != 200:
+        print(f"Error fetching series by TVDB ID {tvdb_id}: {r.status_code}")
+        return None
+    data = r.json()
+    if not data:
+        return None
+    return data[0]
+
+def sonarr_update_series(series: dict, db: db_core.MediaDB | None = None, move_files: bool = False) -> bool:
+    series_id = series.get("id")
+    if not series_id:
+        return False
+    cfg = _get_config(db)
+    params = {"moveFiles": "true"} if move_files else None
+    r = requests.put(
+        f"{cfg['url']}/api/v3/series/{series_id}",
+        headers=cfg["headers"],
+        params=params,
+        json=series,
+        timeout=REQUEST_TIMEOUT
+    )
+    if r.status_code not in (200, 202):
+        print(f"Error updating series {series_id}: {r.status_code} {r.text}")
+        return False
+    return True
+
+def sonarr_trigger_series_search(series_id: int, db: db_core.MediaDB | None = None) -> bool:
+    if not series_id:
+        return False
+    cfg = _get_config(db)
+    payload = {"name": "SeriesSearch", "seriesId": int(series_id)}
+    r = requests.post(
+        f"{cfg['url']}/api/v3/command",
+        headers=cfg["headers"],
+        json=payload,
+        timeout=REQUEST_TIMEOUT
+    )
+    if r.status_code not in (200, 201, 202):
+        print(f"Error triggering series search for {series_id}: {r.status_code} {r.text}")
+        return False
+    return True
 
 def sonarr_set_monitor_all_seasons(series_id: int, db: db_core.MediaDB | None = None) -> bool:
     series = sonarr_get_by_id(series_id, db)

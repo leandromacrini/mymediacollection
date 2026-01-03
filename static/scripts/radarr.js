@@ -1,6 +1,21 @@
 $(document).ready(function() {
     var configEl = document.getElementById('radarr-config');
     var radarrBase = configEl ? (configEl.dataset.radarrUrl || '') : '';
+
+    function formatRootPath(path) {
+        if (!path) {
+            return '';
+        }
+        var value = String(path);
+        var lastSlash = value.lastIndexOf('/');
+        var lastBack = value.lastIndexOf('\\');
+        var sepIndex = Math.max(lastSlash, lastBack);
+        if (sepIndex <= 0) {
+            return value;
+        }
+        return value.slice(0, sepIndex + 1);
+    }
+
     var radarrTable = $('#radarr_table').DataTable({
         paging: true,
         ordering: true,
@@ -26,6 +41,15 @@ $(document).ready(function() {
                     if (type === 'display') {
                         var tmdb = row.tmdb_id ? row.tmdb_id : '';
                         return '<a href="' + radarrBase + '/movie/' + tmdb + '" target="_blank">' + (data || '') + '</a>';
+                    }
+                    return data || '';
+                }
+            },
+            {
+                data: 'path',
+                render: function(data, type) {
+                    if (type === 'display') {
+                        return formatRootPath(data);
                     }
                     return data || '';
                 }

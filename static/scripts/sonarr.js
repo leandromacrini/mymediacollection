@@ -1,6 +1,21 @@
 $(document).ready(function() {
     var configEl = document.getElementById('sonarr-config');
     var sonarrBase = configEl ? (configEl.dataset.sonarrUrl || '') : '';
+
+    function formatRootPath(path) {
+        if (!path) {
+            return '';
+        }
+        var value = String(path);
+        var lastSlash = value.lastIndexOf('/');
+        var lastBack = value.lastIndexOf('\\');
+        var sepIndex = Math.max(lastSlash, lastBack);
+        if (sepIndex <= 0) {
+            return value;
+        }
+        return value.slice(0, sepIndex + 1);
+    }
+
     var sonarrTable = $('#sonarr_table').DataTable({
         paging: true,
         ordering: true,
@@ -26,6 +41,15 @@ $(document).ready(function() {
                     if (type === 'display') {
                         var slug = row.slug ? row.slug : '';
                         return '<a href="' + sonarrBase + '/series/' + slug + '" target="_blank">' + (data || '') + '</a>';
+                    }
+                    return data || '';
+                }
+            },
+            {
+                data: 'path',
+                render: function(data, type) {
+                    if (type === 'display') {
+                        return formatRootPath(data);
                     }
                     return data || '';
                 }

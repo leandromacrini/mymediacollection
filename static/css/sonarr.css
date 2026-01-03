@@ -9,13 +9,15 @@
     text-overflow: ellipsis;
 }
 #sonarr_table th:nth-child(1),
-#sonarr_table td:nth-child(1) { width: 50%; }
+#sonarr_table td:nth-child(1) { width: 35%; }
 #sonarr_table th:nth-child(2),
-#sonarr_table td:nth-child(2) { width: 10%; }
+#sonarr_table td:nth-child(2) { width: 25%; }
 #sonarr_table th:nth-child(3),
-#sonarr_table td:nth-child(3) { width: 20%; }
+#sonarr_table td:nth-child(3) { width: 10%; }
 #sonarr_table th:nth-child(4),
-#sonarr_table td:nth-child(4) { width: 10%; }
+#sonarr_table td:nth-child(4) { width: 15%; }
+#sonarr_table th:nth-child(5),
+#sonarr_table td:nth-child(5) { width: 10%; }
 .sonarr-skeleton {
     display: grid;
     gap: 10px;

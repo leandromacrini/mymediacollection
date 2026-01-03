@@ -36,6 +36,7 @@ def radarr_list():
             "year": m.year,
             "tmdb_id": m.tmdb_id,
             "imdb_id": m.imdb_id,
+            "path": m.path,
             "monitored": m.monitored,
             "has_file": m.has_file
         })

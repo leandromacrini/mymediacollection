@@ -32,7 +32,8 @@ def sonarr_list():
             "year": s.year,
             "tvdb_id": s.tvdb_id,
             "monitored": s.monitored,
-            "slug": s.slug
+            "slug": s.slug,
+            "path": s.path
         })
     return jsonify({
         "ok": True,

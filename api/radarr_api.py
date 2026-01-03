@@ -33,6 +33,7 @@ class RadarrMedia:
     root_folder: str
     monitored: bool
     has_file: bool = False
+    path: str | None = None
 
 # --- API Functions ---
 def radarr_get_client(db: db_core.MediaDB) -> dict:
@@ -59,7 +60,8 @@ def radarr_get_all_movies(db: db_core.MediaDB | None = None) -> List[RadarrMedia
             imdb_id=m.get("imdbId"),
             root_folder=m.get("rootFolderPath"),
             monitored=m.get("monitored", True),
-            has_file=m.get("hasFile", False)
+            has_file=m.get("hasFile", False),
+            path=m.get("path")
         )
         result.append(media)
     return result
@@ -119,8 +121,22 @@ def radarr_get_by_tmdb(tmdb_id: int, db: db_core.MediaDB | None = None) -> Radar
         imdb_id=m.get("imdbId"),
         root_folder=m.get("rootFolderPath"),
         monitored=m.get("monitored", True),
-        has_file=m.get("hasFile", False)
+        has_file=m.get("hasFile", False),
+        path=m.get("path")
     )
+
+def radarr_get_by_tmdb_raw(tmdb_id: int, db: db_core.MediaDB | None = None) -> dict | None:
+    if not tmdb_id:
+        return None
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/movie", headers=cfg["headers"], params={"tmdbId": tmdb_id})
+    if r.status_code != 200:
+        print(f"Error fetching movie by TMDb ID {tmdb_id}: {r.status_code}")
+        return None
+    data = r.json()
+    if not data:
+        return None
+    return data[0]
 
 def radarr_lookup_by_tmdb(tmdb_id: int, db: db_core.MediaDB | None = None) -> RadarrMedia | None:
     """Lookup a movie by TMDb ID (catalog search)."""
@@ -206,6 +222,55 @@ def radarr_add_movie(
     else:
         print(f"Error adding {item.title}: {r.status_code} {r.text}")
         return False
+
+def radarr_update_movie(movie: dict, db: db_core.MediaDB | None = None, move_files: bool = False) -> bool:
+    movie_id = movie.get("id")
+    if not movie_id:
+        return False
+    cfg = _get_config(db)
+    params = {"moveFiles": "true"} if move_files else None
+    r = requests.put(
+        f"{cfg['url']}/api/v3/movie/{movie_id}",
+        headers=cfg["headers"],
+        params=params,
+        json=movie
+    )
+    if r.status_code not in (200, 202):
+        print(f"Error updating movie {movie_id}: {r.status_code} {r.text}")
+        return False
+    return True
+
+def radarr_trigger_movie_search(movie_ids: list[int] | int, db: db_core.MediaDB | None = None) -> bool:
+    if not movie_ids:
+        return False
+    cfg = _get_config(db)
+    if isinstance(movie_ids, int):
+        movie_ids = [movie_ids]
+    payload = {"name": "MoviesSearch", "movieIds": [int(mid) for mid in movie_ids]}
+    r = requests.post(
+        f"{cfg['url']}/api/v3/command",
+        headers=cfg["headers"],
+        json=payload
+    )
+    if r.status_code not in (200, 201, 202):
+        print(f"Error triggering movie search for {movie_ids}: {r.status_code} {r.text}")
+        return False
+    return True
+
+def radarr_delete_movie(movie_id: int, db: db_core.MediaDB | None = None, delete_files: bool = False) -> bool:
+    if not movie_id:
+        return False
+    cfg = _get_config(db)
+    params = {"deleteFiles": "true"} if delete_files else {"deleteFiles": "false"}
+    r = requests.delete(
+        f"{cfg['url']}/api/v3/movie/{movie_id}",
+        headers=cfg["headers"],
+        params=params
+    )
+    if r.status_code not in (200, 202, 204):
+        print(f"Error deleting movie {movie_id}: {r.status_code} {r.text}")
+        return False
+    return True
 
 def radarr_lookup(title: str, year: int | None = None, db: db_core.MediaDB | None = None) -> list[RadarrMedia]:
     """
