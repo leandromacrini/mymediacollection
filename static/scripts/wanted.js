@@ -1,3 +1,80 @@
+var pendingDownloadIds = new Set();
+var pendingDownloadAttempts = 0;
+var pendingDownloadTimer = null;
+var MAX_PENDING_DOWNLOAD_ATTEMPTS = 4;
+var PENDING_REFRESH_DELAY_MS = 3500;
+
+function markRowDownloadPendingInRow($row) {
+    var $cell = $row.find('td').eq(5);
+    $cell.attr('data-order', '0');
+    $cell.html('<span class="spinner-border spinner-border-sm text-secondary" role="status" aria-hidden="true"></span>');
+}
+
+function markRowDownloadPendingById(id) {
+    if (!id) {
+        return;
+    }
+    if (pendingDownloadIds.size === 0) {
+        pendingDownloadAttempts = 0;
+    }
+    pendingDownloadIds.add(String(id));
+    var $row = $('.wanted-select[value="' + id + '"]').closest('tr');
+    if ($row.length) {
+        markRowDownloadPendingInRow($row);
+    }
+}
+
+function applyPendingDownloadState() {
+    if (!pendingDownloadIds.size) {
+        return;
+    }
+    var nextPending = new Set();
+    pendingDownloadIds.forEach(function(id) {
+        var $row = $('.wanted-select[value="' + id + '"]').closest('tr');
+        if (!$row.length) {
+            return;
+        }
+        var total = $row.attr('data-download-total');
+        var hasTotal = total !== undefined && total !== null && total !== '';
+        if (!hasTotal) {
+            markRowDownloadPendingInRow($row);
+            nextPending.add(id);
+        }
+    });
+    pendingDownloadIds = nextPending;
+    if (pendingDownloadIds.size) {
+        if (pendingDownloadAttempts < MAX_PENDING_DOWNLOAD_ATTEMPTS) {
+            schedulePendingRefresh(PENDING_REFRESH_DELAY_MS);
+        } else {
+            pendingDownloadIds.forEach(function(id) {
+                var $row = $('.wanted-select[value="' + id + '"]').closest('tr');
+                if (!$row.length) {
+                    return;
+                }
+                var $cell = $row.find('td').eq(5);
+                $cell.attr('data-order', '0');
+                $cell.html('<span class="text-muted">-</span>');
+            });
+            pendingDownloadIds.clear();
+        }
+    }
+}
+
+function schedulePendingRefresh(delayMs) {
+    if (!pendingDownloadIds.size) {
+        return;
+    }
+    if (pendingDownloadTimer) {
+        clearTimeout(pendingDownloadTimer);
+    }
+    pendingDownloadTimer = setTimeout(function() {
+        if (typeof window.reloadWantedContent === 'function') {
+            pendingDownloadAttempts += 1;
+            window.reloadWantedContent();
+        }
+    }, delayMs || PENDING_REFRESH_DELAY_MS);
+}
+
 function initWantedUI() {
     var wantedSearchTerm = '';
     var wantedTypeFilter = 'all';
@@ -223,17 +300,17 @@ function initWantedUI() {
         return Array.from(selectedIds);
     }
 
-    $('#wanted-type-filter').on('change', function() {
+    $('#wanted-type-filter').off('change.wanted').on('change.wanted', function() {
         wantedTypeFilter = $(this).val() || 'all';
         applyFilters();
     });
 
 
-    $('#wanted-title-search').on('input', function() {
+    $('#wanted-title-search').off('input.wanted').on('input.wanted', function() {
         applySearch();
     });
 
-    $(document).on('change', '.wanted-select', function() {
+    $(document).off('change.wanted', '.wanted-select').on('change.wanted', '.wanted-select', function() {
         var id = $(this).val();
         if ($(this).is(':checked')) {
             selectedIds.add(id);
@@ -243,7 +320,7 @@ function initWantedUI() {
         updateBulkState();
     });
 
-    $('#select-visible-btn').on('click', function() {
+    $('#select-visible-btn').off('click.wanted').on('click.wanted', function() {
         var nodes = table.rows({ search: 'applied' }).nodes();
         $(nodes).find('.wanted-select').each(function() {
             selectedIds.add($(this).val());
@@ -252,12 +329,11 @@ function initWantedUI() {
         updateBulkState();
     });
 
-    $('#select-downloaded-btn').on('click', function() {
+    function selectRowsByPredicate(predicate) {
         var nodes = table.rows({ search: 'applied' }).nodes();
         $(nodes).each(function() {
             var $row = $(this);
-            var isDownloaded = $row.data('downloaded') === 1 || $row.data('downloaded') === '1';
-            if (!isDownloaded) {
+            if (!predicate($row)) {
                 return;
             }
             var id = $row.find('.wanted-select').val();
@@ -267,15 +343,45 @@ function initWantedUI() {
         });
         syncSelectionToTable();
         updateBulkState();
+    }
+
+    $('#select-downloaded-btn').off('click.wanted').on('click.wanted', function() {
+        selectRowsByPredicate(function($row) {
+            return $row.data('downloaded') === 1 || $row.data('downloaded') === '1';
+        });
     });
 
-    $('#clear-selection-btn').on('click', function() {
+    $('#select-tmdb-btn').off('click.wanted').on('click.wanted', function() {
+        selectRowsByPredicate(function($row) {
+            return $row.data('has-tmdb') === 1 || $row.data('has-tmdb') === '1';
+        });
+    });
+
+    $('#select-tvdb-btn').off('click.wanted').on('click.wanted', function() {
+        selectRowsByPredicate(function($row) {
+            return $row.data('has-tvdb') === 1 || $row.data('has-tvdb') === '1';
+        });
+    });
+
+    $('#select-radarr-btn').off('click.wanted').on('click.wanted', function() {
+        selectRowsByPredicate(function($row) {
+            return $row.data('in-radarr') === 1 || $row.data('in-radarr') === '1';
+        });
+    });
+
+    $('#select-sonarr-btn').off('click.wanted').on('click.wanted', function() {
+        selectRowsByPredicate(function($row) {
+            return $row.data('in-sonarr') === 1 || $row.data('in-sonarr') === '1';
+        });
+    });
+
+    $('#clear-selection-btn').off('click.wanted').on('click.wanted', function() {
         selectedIds.clear();
         syncSelectionToTable();
         updateBulkState();
     });
 
-    $('#bulk-delete-confirm').on('click', function() {
+    $('#bulk-delete-confirm').off('click.wanted').on('click.wanted', function() {
         var ids = Array.from(selectedIds);
         if (!ids.length) {
             return;
@@ -305,9 +411,9 @@ function initWantedUI() {
         });
     });
 
-    $('#bulkDeleteModal').on('show.bs.modal', updateBulkState);
-    $('#bulkRadarrModal').on('show.bs.modal', updateBulkState);
-    $('#bulkSonarrModal').on('show.bs.modal', updateBulkState);
+    $('#bulkDeleteModal').off('show.bs.modal.wanted').on('show.bs.modal.wanted', updateBulkState);
+    $('#bulkRadarrModal').off('show.bs.modal.wanted').on('show.bs.modal.wanted', updateBulkState);
+    $('#bulkSonarrModal').off('show.bs.modal.wanted').on('show.bs.modal.wanted', updateBulkState);
 
     function renderLookupResults(provider, items, listEl) {
         if (!items || !items.length) {
@@ -360,7 +466,7 @@ function initWantedUI() {
         });
     }
 
-    $(document).on('show.bs.modal', '.modal', function() {
+    $(document).off('show.bs.modal.wanted', '.modal').on('show.bs.modal.wanted', '.modal', function() {
         var listEl = $(this).find('.lookup-results');
         if (!listEl.length) {
             return;
@@ -368,13 +474,13 @@ function initWantedUI() {
         loadLookupResults(listEl);
     });
 
-    $(document).on('click', '.lookup-run', function() {
+    $(document).off('click.wanted', '.lookup-run').on('click.wanted', '.lookup-run', function() {
         var modal = $(this).closest('.modal');
         var listEl = modal.find('.lookup-results');
         loadLookupResults(listEl);
     });
 
-    $(document).on('keyup', '.lookup-query', function(e) {
+    $(document).off('keyup.wanted', '.lookup-query').on('keyup.wanted', '.lookup-query', function(e) {
         if (e.key === 'Enter') {
             e.preventDefault();
             $(this).closest('.modal').find('.lookup-run').click();
@@ -467,7 +573,7 @@ function initWantedUI() {
         updateBulkState();
     }
 
-    $(document).on('click', '.select-external-btn', function() {
+    $(document).off('click.wanted', '.select-external-btn').on('click.wanted', '.select-external-btn', function() {
         var button = $(this);
         var mediaId = button.data('media-id');
         var source = button.data('source');
@@ -500,7 +606,7 @@ function initWantedUI() {
         });
     });
 
-    $(document).on('click', '.delete-single-btn', function(event) {
+    $(document).off('click.wanted', '.delete-single-btn').on('click.wanted', '.delete-single-btn', function(event) {
         event.preventDefault();
         var button = $(this);
         var mediaId = button.data('media-id');
@@ -637,42 +743,42 @@ function initWantedUI() {
         });
     }
 
-    $(document).on('click', '.radarr-add-btn', function() {
+    $(document).off('click.wanted', '.radarr-add-btn').on('click.wanted', '.radarr-add-btn', function() {
         var mediaId = $(this).data('media-id');
         var title = $(this).data('title');
         $('#radarr-add-media-id').val(mediaId);
         $('#radarr-add-title').text('Seleziona root e profilo per: ' + title);
     });
 
-    $(document).on('click', '.sonarr-add-btn', function() {
+    $(document).off('click.wanted', '.sonarr-add-btn').on('click.wanted', '.sonarr-add-btn', function() {
         var mediaId = $(this).data('media-id');
         var title = $(this).data('title');
         $('#sonarr-add-media-id').val(mediaId);
         $('#sonarr-add-title').text('Seleziona root e profilo per: ' + title);
     });
 
-    $('#radarrAddModal').on('show.bs.modal', function() {
+    $('#radarrAddModal').off('show.bs.modal.wanted').on('show.bs.modal.wanted', function() {
         loadRadarrOptions(
             $('#radarr-root-select'),
             $('#radarr-profile-select'),
             $('#radarr-add-error')
         );
     });
-    $('#radarrAddModal').on('hidden.bs.modal', function() {
+    $('#radarrAddModal').off('hidden.bs.modal.wanted').on('hidden.bs.modal.wanted', function() {
         $('#radarr-add-error').addClass('d-none').text('Errore durante il caricamento.');
         $('#radarr-add-status').addClass('d-none').text('Invio a Radarr in corso...');
         $('#radarr-add-confirm').prop('disabled', false).text('Invia');
         applyRadarrDefaults($('#radarr-root-select'), $('#radarr-profile-select'));
     });
 
-    $('#sonarrAddModal').on('show.bs.modal', function() {
+    $('#sonarrAddModal').off('show.bs.modal.wanted').on('show.bs.modal.wanted', function() {
         loadSonarrOptions(
             $('#sonarr-root-select'),
             $('#sonarr-profile-select'),
             $('#sonarr-add-error')
         );
     });
-    $('#sonarrAddModal').on('hidden.bs.modal', function() {
+    $('#sonarrAddModal').off('hidden.bs.modal.wanted').on('hidden.bs.modal.wanted', function() {
         $('#sonarr-add-error').addClass('d-none').text('Errore durante il caricamento.');
         $('#sonarr-add-status').addClass('d-none').text('Invio a Sonarr in corso...');
         $('#sonarr-add-confirm').prop('disabled', false).text('Invia');
@@ -680,28 +786,28 @@ function initWantedUI() {
         $('#sonarr-monitor-specials').prop('checked', false);
     });
 
-    $('#bulkRadarrModal').on('show.bs.modal', function() {
+    $('#bulkRadarrModal').off('show.bs.modal.wanted').on('show.bs.modal.wanted', function() {
         loadRadarrOptions(
             $('#bulk-radarr-root'),
             $('#bulk-radarr-profile'),
             $('#bulk-radarr-error')
         );
     });
-    $('#bulkRadarrModal').on('hidden.bs.modal', function() {
+    $('#bulkRadarrModal').off('hidden.bs.modal.wanted').on('hidden.bs.modal.wanted', function() {
         $('#bulk-radarr-error').addClass('d-none').text('Errore durante il caricamento.');
         $('#bulk-radarr-status').addClass('d-none').text('Invio a Radarr in corso...');
         $('#bulk-radarr-confirm').prop('disabled', false).text('Invia');
         applyRadarrDefaults($('#bulk-radarr-root'), $('#bulk-radarr-profile'));
     });
 
-    $('#bulkSonarrModal').on('show.bs.modal', function() {
+    $('#bulkSonarrModal').off('show.bs.modal.wanted').on('show.bs.modal.wanted', function() {
         loadSonarrOptions(
             $('#bulk-sonarr-root'),
             $('#bulk-sonarr-profile'),
             $('#bulk-sonarr-error')
         );
     });
-    $('#bulkSonarrModal').on('hidden.bs.modal', function() {
+    $('#bulkSonarrModal').off('hidden.bs.modal.wanted').on('hidden.bs.modal.wanted', function() {
         $('#bulk-sonarr-error').addClass('d-none').text('Errore durante il caricamento.');
         $('#bulk-sonarr-status').addClass('d-none').text('Invio a Sonarr in corso...');
         $('#bulk-sonarr-confirm').prop('disabled', false).text('Invia');
@@ -709,7 +815,7 @@ function initWantedUI() {
         $('#bulk-sonarr-monitor-specials').prop('checked', false);
     });
 
-    $('#radarr-add-confirm').on('click', function() {
+    $('#radarr-add-confirm').off('click.wanted').on('click.wanted', function() {
         var button = $(this);
         var mediaId = $('#radarr-add-media-id').val();
         var root = $('#radarr-root-select').val();
@@ -730,7 +836,6 @@ function initWantedUI() {
         }).done(function() {
             $('#radarr-add-status').removeClass('d-none').text('Inviato a Radarr. Aggiorno la lista...');
             setTimeout(function() {
-                updateRowInRadarr(mediaId);
                 var modalEl = document.getElementById('radarrAddModal');
                 if (modalEl) {
                     var modal = bootstrap.Modal.getInstance(modalEl);
@@ -738,6 +843,8 @@ function initWantedUI() {
                         modal.hide();
                     }
                 }
+                markRowDownloadPendingById(mediaId);
+                schedulePendingRefresh(2000);
             }, 900);
         }).fail(function() {
             button.prop('disabled', false).text('Invia');
@@ -746,7 +853,7 @@ function initWantedUI() {
         });
     });
 
-    $('#sonarr-add-confirm').on('click', function() {
+    $('#sonarr-add-confirm').off('click.wanted').on('click.wanted', function() {
         var button = $(this);
         var mediaId = $('#sonarr-add-media-id').val();
         var root = $('#sonarr-root-select').val();
@@ -773,7 +880,6 @@ function initWantedUI() {
         }).done(function() {
             $('#sonarr-add-status').removeClass('d-none').text('Inviato a Sonarr. Aggiorno la lista...');
             setTimeout(function() {
-                updateRowInSonarr(mediaId);
                 var modalEl = document.getElementById('sonarrAddModal');
                 if (modalEl) {
                     var modal = bootstrap.Modal.getInstance(modalEl);
@@ -781,7 +887,9 @@ function initWantedUI() {
                         modal.hide();
                     }
                 }
-            }, 900);
+                markRowDownloadPendingById(mediaId);
+                schedulePendingRefresh(PENDING_REFRESH_DELAY_MS);
+            }, 1200);
         }).fail(function() {
             button.prop('disabled', false).text('Invia');
             $('#sonarr-add-status').addClass('d-none');
@@ -789,7 +897,7 @@ function initWantedUI() {
         });
     });
 
-    $('#bulk-radarr-confirm').on('click', function() {
+    $('#bulk-radarr-confirm').off('click.wanted').on('click.wanted', function() {
         var button = $(this);
         var root = $('#bulk-radarr-root').val();
         var profile = $('#bulk-radarr-profile').val();
@@ -810,16 +918,6 @@ function initWantedUI() {
         }).done(function(resp) {
             $('#bulk-radarr-status').removeClass('d-none').text('Inviati a Radarr. Aggiorno la lista...');
             setTimeout(function() {
-                var updatedIds = [];
-                if (resp && resp.added_ids) {
-                    updatedIds = updatedIds.concat(resp.added_ids);
-                }
-                if (resp && resp.skipped_ids) {
-                    updatedIds = updatedIds.concat(resp.skipped_ids);
-                }
-                updatedIds.forEach(function(id) {
-                    updateRowInRadarr(id);
-                });
                 var modalEl = document.getElementById('bulkRadarrModal');
                 if (modalEl) {
                     var modal = bootstrap.Modal.getInstance(modalEl);
@@ -827,6 +925,10 @@ function initWantedUI() {
                         modal.hide();
                     }
                 }
+                mediaIds.forEach(function(id) {
+                    markRowDownloadPendingById(id);
+                });
+                schedulePendingRefresh(2000);
             }, 900);
         }).fail(function() {
             button.prop('disabled', false).text('Invia');
@@ -835,7 +937,7 @@ function initWantedUI() {
         });
     });
 
-    $('#bulk-sonarr-confirm').on('click', function() {
+    $('#bulk-sonarr-confirm').off('click.wanted').on('click.wanted', function() {
         var button = $(this);
         var root = $('#bulk-sonarr-root').val();
         var profile = $('#bulk-sonarr-profile').val();
@@ -863,16 +965,6 @@ function initWantedUI() {
         }).done(function(resp) {
             $('#bulk-sonarr-status').removeClass('d-none').text('Inviati a Sonarr. Aggiorno la lista...');
             setTimeout(function() {
-                var updatedIds = [];
-                if (resp && resp.added_ids) {
-                    updatedIds = updatedIds.concat(resp.added_ids);
-                }
-                if (resp && resp.skipped_ids) {
-                    updatedIds = updatedIds.concat(resp.skipped_ids);
-                }
-                updatedIds.forEach(function(id) {
-                    updateRowInSonarr(id);
-                });
                 var modalEl = document.getElementById('bulkSonarrModal');
                 if (modalEl) {
                     var modal = bootstrap.Modal.getInstance(modalEl);
@@ -880,7 +972,11 @@ function initWantedUI() {
                         modal.hide();
                     }
                 }
-            }, 900);
+                mediaIds.forEach(function(id) {
+                    markRowDownloadPendingById(id);
+                });
+                schedulePendingRefresh(PENDING_REFRESH_DELAY_MS);
+            }, 1200);
         }).fail(function() {
             button.prop('disabled', false).text('Invia');
             $('#bulk-sonarr-status').addClass('d-none');
@@ -955,7 +1051,7 @@ function initWantedUI() {
         $('#merge-confirm-btn').prop('disabled', groups.length === 0);
     }
 
-    $('#mergeWantedModal').on('show.bs.modal', function() {
+    $('#mergeWantedModal').off('show.bs.modal.wanted').on('show.bs.modal.wanted', function() {
         var ids = getSelectedIds();
         mergePreviewData = null;
         $('#merge-preview-status').removeClass('d-none').text('Caricamento anteprima merge...');
@@ -983,7 +1079,7 @@ function initWantedUI() {
         });
     });
 
-    $('#merge-confirm-btn').on('click', function() {
+    $('#merge-confirm-btn').off('click.wanted').on('click.wanted', function() {
         var button = $(this);
         if (!mergePreviewData || !mergePreviewData.merge_groups || !mergePreviewData.merge_groups.length) {
             return;
@@ -1033,43 +1129,57 @@ function initWantedUI() {
     applyFilters();
     syncSelectionToTable();
 
-    table.on('draw', function() {
+    table.off('draw.wanted').on('draw.wanted', function() {
         syncSelectionToTable();
     });
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    var container = document.getElementById('wanted-content');
-    var skeleton = document.getElementById('wanted-skeleton');
-    fetch('/api/wanted/content')
-        .then(function(resp) { return resp.text(); })
-        .then(function(html) {
-            if (container) {
+    function refreshWantedContent() {
+        var container = document.getElementById('wanted-content');
+        var skeleton = document.getElementById('wanted-skeleton');
+        if (!container) {
+            return Promise.resolve();
+        }
+        return fetch('/api/wanted/content')
+            .then(function(resp) { return resp.text(); })
+            .then(function(html) {
+                if ($.fn.DataTable.isDataTable('#wanted_table')) {
+                    $('#wanted_table').DataTable().destroy();
+                }
                 container.innerHTML = html;
                 container.classList.remove('d-none');
-            }
-            if (skeleton) {
-                skeleton.style.display = 'none';
-            }
-            var stats = document.getElementById('wanted-stats-data');
-            if (stats) {
-                $('#wanted-count-total').text(stats.dataset.total || '0');
-                $('#wanted-count-movies').text(stats.dataset.movies || '0');
-                $('#wanted-count-series').text(stats.dataset.series || '0');
-                $('#wanted-count-missing').text(stats.dataset.missing || '0');
-                $('#wanted-count-in-radarr').text(stats.dataset.inRadarr || '0');
-                $('#wanted-count-in-sonarr').text(stats.dataset.inSonarr || '0');
-            }
-            $('#wanted-title-search').prop('disabled', false);
-            $('#wanted-type-filter').prop('disabled', false);
+                if (skeleton) {
+                    skeleton.style.display = 'none';
+                }
+                var stats = document.getElementById('wanted-stats-data');
+                if (stats) {
+                    $('#wanted-count-total').text(stats.dataset.total || '0');
+                    $('#wanted-count-movies').text(stats.dataset.movies || '0');
+                    $('#wanted-count-series').text(stats.dataset.series || '0');
+                    $('#wanted-count-missing').text(stats.dataset.missing || '0');
+                    $('#wanted-count-in-radarr').text(stats.dataset.inRadarr || '0');
+                    $('#wanted-count-in-sonarr').text(stats.dataset.inSonarr || '0');
+                }
+                $('#wanted-title-search').prop('disabled', false);
+                $('#wanted-type-filter').prop('disabled', false);
             $('#select-visible-btn').prop('disabled', false);
             $('#select-downloaded-btn').prop('disabled', false);
+            $('#select-tmdb-btn').prop('disabled', false);
+            $('#select-tvdb-btn').prop('disabled', false);
+            $('#select-radarr-btn').prop('disabled', false);
+            $('#select-sonarr-btn').prop('disabled', false);
             $('#clear-selection-btn').prop('disabled', false);
-            initWantedUI();
-        })
-        .catch(function() {
-            if (skeleton) {
-                skeleton.style.display = 'none';
-            }
-        });
+                initWantedUI();
+                applyPendingDownloadState();
+            })
+            .catch(function() {
+                if (skeleton) {
+                    skeleton.style.display = 'none';
+                }
+            });
+    }
+
+    window.reloadWantedContent = refreshWantedContent;
+    refreshWantedContent();
 });

@@ -48,7 +48,7 @@ def plex_get_media_by_mediatype(db_path: str, mediatype: int) -> list[PlexMedia]
 def plex_get_series(db_path: str) -> list[PlexMedia]:
     """
     Retrieve series (show) items from Plex DB.
-    Uses one episode file path as reference for the series.
+    Uses one episode file path as reference for the series when available.
     """
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -59,15 +59,18 @@ def plex_get_series(db_path: str) -> list[PlexMedia]:
             show.guid,
             MIN(mp.file) AS file_path
         FROM metadata_items show
-        JOIN metadata_items season
+        LEFT JOIN metadata_items season
             ON season.parent_id = show.id
            AND season.metadata_type = ?
-        JOIN metadata_items episode
-            ON episode.parent_id = season.id
+        LEFT JOIN metadata_items episode
+            ON (
+                episode.parent_id = season.id
+                OR episode.parent_id = show.id
+            )
            AND episode.metadata_type = ?
-        JOIN media_items m
+        LEFT JOIN media_items m
             ON m.metadata_item_id = episode.id
-        JOIN media_parts mp
+        LEFT JOIN media_parts mp
             ON mp.media_item_id = m.id
         WHERE show.metadata_type = ?
         GROUP BY show.id, show.title, show.year, show.guid
@@ -75,7 +78,15 @@ def plex_get_series(db_path: str) -> list[PlexMedia]:
     rows = cursor.fetchall()
     conn.close()
 
-    return [PlexMedia(title=row[0], year=row[1], guid=row[2], file_path=row[3]) for row in rows]
+    return [
+        PlexMedia(
+            title=row[0],
+            year=row[1],
+            guid=row[2],
+            file_path=row[3] or ""
+        )
+        for row in rows
+    ]
 
 def plex_get_media_by_title_year(db_path: str, title: str, year: int, mediatype: int = MOVIE_MEDIATYPE) -> PlexMedia | None:
     """

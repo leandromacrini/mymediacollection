@@ -58,6 +58,14 @@
     padding: 20px;
     box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
 }
+.table tbody tr > * {
+    transition: background-color 0.12s ease-in-out;
+}
+.table tbody tr:hover > *,
+.dataTable tbody tr:hover > *,
+.table.table-striped tbody tr:hover > * {
+    background-color: rgba(15, 23, 42, 0.09) !important;
+}
 @media (max-width: 991.98px) {
     .mmc-shell {
         flex-direction: column;

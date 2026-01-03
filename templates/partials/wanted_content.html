@@ -41,6 +41,20 @@
                 {% set in_sonarr = tvdb_id and (tvdb_id in sonarr_tvdb) %}
                 {% set radarr_done = tmdb_id and (tmdb_id in radarr_downloaded) %}
                 {% set sonarr_done = tvdb_id and (tvdb_id in sonarr_downloaded) %}
+                {% if item.media_type == "movie" %}
+                    {% if in_radarr %}
+                        {% set downloaded_count = 1 if radarr_done else 0 %}
+                        {% set total_count = 1 %}
+                    {% else %}
+                        {% set downloaded_count = 0 %}
+                        {% set total_count = none %}
+                    {% endif %}
+                {% else %}
+                    {% set progress = sonarr_progress.get(tvdb_id|string) if tvdb_id else None %}
+                    {% set downloaded_count = progress.get('downloaded') if progress else 0 %}
+                    {% set total_count = progress.get('total') if progress else none %}
+                {% endif %}
+                {% set download_ratio = (downloaded_count / total_count) if total_count and total_count > 0 else 0 %}
                 {% set missing_external = false %}
                 {% if item.media_type == "movie" and not tmdb_id %}
                     {% set missing_external = true %}
@@ -60,7 +74,9 @@
                     data-in-radarr="{{ '1' if in_radarr else '0' }}"
                     data-in-sonarr="{{ '1' if in_sonarr else '0' }}"
                     data-missing-external="{{ '1' if missing_external else '0' }}"
-                    data-downloaded="{{ '1' if radarr_done or sonarr_done else '0' }}">
+                    data-downloaded="{{ '1' if radarr_done or sonarr_done else '0' }}"
+                    data-download-current="{{ downloaded_count if total_count is not none else '' }}"
+                    data-download-total="{{ total_count if total_count is not none else '' }}">
 
                     <td class="text-center">
                         <input class="form-check-input wanted-select"
@@ -189,9 +205,11 @@
             </td>
 
                     <!-- DOWNLOADED -->
-                    <td data-order="{{ 1 if radarr_done or sonarr_done else 0 }}" class="text-center">
-                        {% if radarr_done or sonarr_done %}
-                            <span class="badge bg-success"><i class="bi bi-check-lg"></i></span>
+                    <td data-order="{{ download_ratio }}" class="text-center">
+                        {% if total_count and total_count > 0 %}
+                            <span class="badge {{ 'bg-success' if downloaded_count >= total_count else 'bg-light text-dark' }}">
+                                {{ downloaded_count }}/{{ total_count }}
+                            </span>
                         {% else %}
                             <span class="text-muted">-</span>
                         {% endif %}
@@ -334,8 +352,17 @@
                                 <h5 class="modal-title">
                             Identifica su TVDB - {{ item.title }}{% if item.year %} ({{ item.year }}){% endif %}
                                 </h5>
-                                <button type="button" class="btn-close"
-                                        data-bs-dismiss="modal"></button>
+                                {% set google_query = (item.original_title or item.title) ~ (" " ~ item.year if item.year else "") %}
+                                <div class="ms-auto d-flex align-items-center gap-2">
+                                    <a class="btn btn-sm btn-outline-primary"
+                                       href="https://www.google.com/search?q={{ google_query|urlencode }}"
+                                       target="_blank"
+                                       rel="noopener">
+                                        Google
+                                    </a>
+                                    <button type="button" class="btn-close"
+                                            data-bs-dismiss="modal"></button>
+                                </div>
                             </div>
 
                             <div class="modal-body">

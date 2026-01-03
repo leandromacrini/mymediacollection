@@ -38,6 +38,7 @@ def wanted_content():
     sonarr_slug_map = {str(s.tvdb_id): s.slug for s in sonarr_series if s.tvdb_id and s.slug}
     sonarr_series_stats = sonarr_api.sonarr_get_series_stats(db)
     sonarr_downloaded = set()
+    sonarr_progress = {}
     for s in sonarr_series_stats:
         tvdb_id = s.get("tvdbId")
         stats = s.get("statistics") or {}
@@ -45,6 +46,11 @@ def wanted_content():
         if episode_count is None:
             episode_count = stats.get("totalEpisodeCount")
         episode_file_count = stats.get("episodeFileCount") or 0
+        if tvdb_id:
+            sonarr_progress[str(tvdb_id)] = {
+                "downloaded": int(episode_file_count),
+                "total": episode_count if episode_count is not None else None,
+            }
         if tvdb_id and episode_count and episode_file_count >= episode_count:
             sonarr_downloaded.add(str(tvdb_id))
     radarr_cfg = db.get_service_config("Radarr")
@@ -58,6 +64,7 @@ def wanted_content():
         sonarr_tvdb=sonarr_tvdb,
         sonarr_slug_map=sonarr_slug_map,
         sonarr_downloaded=sonarr_downloaded,
+        sonarr_progress=sonarr_progress,
         radarr_url=radarr_url,
         radarr_defaults={
             "root_folder": radarr_cfg.get("radarr_root_folder"),
