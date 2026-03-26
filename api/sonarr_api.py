@@ -10,7 +10,8 @@ SONARR_API_KEY = "REMOVED"
 PROFILE_ID = 1           # Quality profile
 ENABLE_SEARCH = False     # True per far partire la ricerca automatica su Sonarr
 ROOT_FOLDER = "/data/File Sharing/sonarr"
-REQUEST_TIMEOUT = 8
+REQUEST_TIMEOUT = 30
+SERIES_CACHE_TTL = 60
 # ==================
 
 def _get_config(db: db_core.MediaDB | None = None) -> dict:
@@ -27,6 +28,71 @@ def _get_config(db: db_core.MediaDB | None = None) -> dict:
 
 def sonarr_get_client(db: db_core.MediaDB) -> dict:
     return _get_config(db)
+
+# Cache for /series payload
+_SERIES_CACHE: dict = {"ts": 0.0, "data": None}
+
+def _is_italian_lang(value) -> bool:
+    if not value:
+        return False
+    text = str(value).strip().lower()
+    return text in {"it", "ita", "it-it", "italian", "italiano"}
+
+
+def _extract_it_title(entry) -> str | None:
+    if not entry:
+        return None
+    if isinstance(entry, str):
+        return entry.strip() or None
+    if isinstance(entry, dict):
+        lang_values = [
+            entry.get("language"),
+            entry.get("iso_639_1"),
+            entry.get("iso639_1"),
+            entry.get("isoCode"),
+            entry.get("twoLetterCode"),
+            entry.get("name"),
+        ]
+        if any(_is_italian_lang(v) for v in lang_values):
+            for key in ("title", "name", "value"):
+                v = entry.get(key)
+                if v and str(v).strip():
+                    return str(v).strip()
+    return None
+
+
+def _sonarr_pick_display_title(series: dict) -> str:
+    for key in ("alternateTitles", "translations"):
+        collection = series.get(key)
+        if isinstance(collection, list):
+            for entry in collection:
+                title = _extract_it_title(entry)
+                if title:
+                    return title
+    title = series.get("title")
+    if title and str(title).strip():
+        return str(title).strip()
+    original = series.get("originalTitle")
+    if original and str(original).strip():
+        return str(original).strip()
+    return ""
+
+
+def _sonarr_get_series_raw(db: db_core.MediaDB | None = None, force: bool = False) -> list[dict]:
+    now = time.time()
+    cached = _SERIES_CACHE.get("data")
+    if not force and cached is not None and (now - float(_SERIES_CACHE.get("ts") or 0)) < SERIES_CACHE_TTL:
+        return cached
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/series", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)
+    if r.status_code != 200:
+        print(f"Error fetching series from Sonarr: {r.status_code}")
+        return cached or []
+    data = r.json()
+    series_list = data if isinstance(data, list) else []
+    _SERIES_CACHE["ts"] = now
+    _SERIES_CACHE["data"] = series_list
+    return series_list
 
 # --- Data object ---
 @dataclass
@@ -48,16 +114,11 @@ def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia
     Returns a list of SonarrMedia objects.
     """
     cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/series", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)
-    if r.status_code != 200:
-        print(f"Error fetching series from Sonarr: {r.status_code}")
-        return []
-
-    series_list = r.json()
+    series_list = _sonarr_get_series_raw(db)
     result = []
     for s in series_list:
         media = SonarrMedia(
-            title=s.get("title"),
+            title=_sonarr_pick_display_title(s),
             year=s.get("year"),
             tvdb_id=s.get("tvdbId"),
             imdb_id=s.get("imdbId"),
@@ -71,12 +132,7 @@ def sonarr_get_all_series(db: db_core.MediaDB | None = None) -> List[SonarrMedia
     return result
 
 def sonarr_get_series_stats(db: db_core.MediaDB | None = None) -> list[dict]:
-    cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/series", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)
-    if r.status_code != 200:
-        print(f"Error fetching series stats from Sonarr: {r.status_code}")
-        return []
-    data = r.json()
+    data = _sonarr_get_series_raw(db)
     return data if isinstance(data, list) else []
 
 def sonarr_get_root_folders(db: db_core.MediaDB | None = None) -> list[dict]:
@@ -132,7 +188,7 @@ def sonarr_get_by_tvdb(tvdb_id: int, db: db_core.MediaDB | None = None) -> Sonar
         return None
     s = data[0]
     return SonarrMedia(
-        title=s.get("title"),
+        title=_sonarr_pick_display_title(s),
         tvdb_id=s.get("tvdbId"),
         imdb_id=s.get("imdbId"),
         year=s.get("year"),
@@ -161,7 +217,7 @@ def sonarr_get_by_imdb(imdb_id: str, db: db_core.MediaDB | None = None) -> Sonar
         return None
     s = data[0]
     return SonarrMedia(
-        title=s.get("title"),
+        title=_sonarr_pick_display_title(s),
         tvdb_id=s.get("tvdbId"),
         imdb_id=s.get("imdbId"),
         year=s.get("year"),
@@ -186,7 +242,7 @@ def sonarr_lookup_by_tvdb(tvdb_id: int, db: db_core.MediaDB | None = None) -> So
         return None
     s = data[0]
     return SonarrMedia(
-        title=s.get("title"),
+        title=_sonarr_pick_display_title(s),
         tvdb_id=s.get("tvdbId"),
         imdb_id=s.get("imdbId"),
         year=s.get("year"),
@@ -399,7 +455,15 @@ def sonarr_lookup(title: str, db: db_core.MediaDB | None = None) -> list[SonarrM
     """
     cfg = _get_config(db)
     params = {"term": title, "apikey": cfg["headers"]["X-Api-Key"]}
-    r = requests.get(f"{cfg['url']}/api/v3/series/lookup", params=params, timeout=REQUEST_TIMEOUT)
+    try:
+        r = requests.get(
+            f"{cfg['url']}/api/v3/series/lookup",
+            params=params,
+            timeout=REQUEST_TIMEOUT
+        )
+    except requests.RequestException as exc:
+        print(f"Error looking up '{title}' on Sonarr: {exc}")
+        return []
     if r.status_code != 200:
         print(f"Error looking up '{title}' on Sonarr: {r.status_code}")
         return []
@@ -408,7 +472,7 @@ def sonarr_lookup(title: str, db: db_core.MediaDB | None = None) -> list[SonarrM
     media_list = []
     for s in results:
         media_list.append(SonarrMedia(
-            title=s.get("title"),
+            title=_sonarr_pick_display_title(s),
             tvdb_id=s.get("tvdbId"),
             imdb_id=s.get("imdbId"),
             year=s.get("year"),

@@ -1,0 +1,111 @@
+{% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/mircrew.css') }}">
+{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <div>
+    <h2 class="mb-0"><i class="bi bi-hdd-stack"></i> MirCrew</h2>
+    <small class="text-muted">Importa il JSON esportato dallo userscript e cerca release da aggiungere ai wanted.</small>
+  </div>
+  <div class="d-flex flex-wrap gap-2 align-items-center">
+    <div class="text-muted small" id="mircrew-cache-status">
+      {% if status.exists %}
+      Cache file: {{ status.count }} release | updated: {{ status.updated_at or '-' }} | RAM: {{ 'loaded' if status.cache_loaded else 'idle' }}
+      {% else %}
+      Cache file: non presente
+      {% endif %}
+    </div>
+    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#mircrewImportModal" type="button">
+      <i class="bi bi-upload me-1"></i>Import JSON
+    </button>
+  </div>
+</div>
+
+<form method="get" action="{{ url_for('mircrew.mircrew_view') }}" class="mb-4">
+  <div class="input-group">
+    <input type="text" class="form-control" name="q" placeholder="Cerca titolo release MirCrew..." value="{{ query or '' }}">
+    <button class="btn btn-primary" type="submit">
+      <i class="bi bi-search"></i> Cerca
+    </button>
+  </div>
+</form>
+
+{% if results %}
+<div class="table-responsive">
+  <table class="table table-striped table-bordered align-middle mircrew-results-table">
+    <thead class="table-light">
+      <tr>
+        <th>Titolo</th>
+        <th style="width: 100px;">Anno</th>
+        <th style="width: 110px;">Tipo</th>
+        <th style="width: 140px;">Categoria</th>
+        <th style="width: 130px;">Size</th>
+        <th style="width: 170px;">Azioni</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in results %}
+      <tr>
+        <td>
+          <div class="fw-semibold">{{ row.clean_title or row.title_hint }}</div>
+          <div class="mircrew-subline text-muted">{{ row.title_hint }}</div>
+        </td>
+        <td>{{ row.year or '' }}</td>
+        <td>{{ row.media_type or '' }}</td>
+        <td>{{ row.category_label or row.category_value or '' }}</td>
+        <td title="{{ row.size_tooltip }}">{{ row.size_display or "" }}</td>
+        <td>
+          {% if row.status == 'wanted' %}
+            <button class="btn btn-sm btn-outline-secondary" disabled title="Gia nei wanted">
+              <i class="bi bi-bookmark-check"></i> Want
+            </button>
+          {% else %}
+            <form method="post" action="{{ url_for('mircrew.mircrew_add_wanted') }}" class="d-inline">
+              <input type="hidden" name="release_id" value="{{ row.release_id }}">
+              <input type="hidden" name="search_query" value="{{ query or '' }}">
+              <button class="btn btn-sm btn-success" type="submit" title="Aggiungi ai wanted">
+                <i class="bi bi-bookmark-plus"></i> Want
+              </button>
+            </form>
+          {% endif %}
+          <a class="btn btn-sm btn-outline-secondary" href="{{ row.release_url }}" target="_blank" rel="noopener" title="Apri release">
+            <i class="bi bi-link-45deg"></i>
+          </a>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+<div class="modal fade" id="mircrewImportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <form method="post" action="{{ url_for('mircrew.mircrew_import_json') }}" enctype="multipart/form-data" id="mircrew-import-form">
+        <div class="modal-header">
+          <h5 class="modal-title">Import MirCrew JSON</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p class="text-muted small mb-2">Carica il file JSON esportato dallo userscript MirCrew.</p>
+          <input class="form-control" type="file" name="file" accept=".json,application/json" required>
+          <div class="form-text">La cache in RAM verra invalidata e ricaricata alla prima ricerca.</div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annulla</button>
+          <button type="submit" class="btn btn-primary" id="mircrew-import-submit">
+            <i class="bi bi-upload me-1"></i>Importa
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='scripts/mircrew.js') }}"></script>
+{% endblock %}
+
+

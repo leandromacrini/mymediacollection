@@ -9,6 +9,8 @@ RADARR_API_KEY = "REMOVED"
 PROFILE_ID = 7
 ENABLE_SEARCH = False  # True per far partire la ricerca automatica su Radarr
 ROOT_FOLDER = "/data/File Sharing/radarr"  # cartella principale di Radarr
+REQUEST_TIMEOUT = 30
+MOVIES_CACHE_TTL = 60
 # ==================
 
 def _get_config(db: db_core.MediaDB | None = None) -> dict:
@@ -22,6 +24,26 @@ def _get_config(db: db_core.MediaDB | None = None) -> dict:
         "profile_id": cfg.get("radarr_profile_id") or PROFILE_ID,
         "enable_search": cfg.get("radarr_enable_search") if cfg.get("radarr_enable_search") is not None else ENABLE_SEARCH
     }
+
+# Cache for /movie payload
+_MOVIES_CACHE: dict = {"ts": 0.0, "data": None}
+
+def _radarr_get_movies_raw(db: db_core.MediaDB | None = None, force: bool = False) -> list[dict]:
+    import time
+    now = time.time()
+    cached = _MOVIES_CACHE.get("data")
+    if not force and cached is not None and (now - float(_MOVIES_CACHE.get("ts") or 0)) < MOVIES_CACHE_TTL:
+        return cached
+    cfg = _get_config(db)
+    r = requests.get(f"{cfg['url']}/api/v3/movie", headers=cfg["headers"], timeout=REQUEST_TIMEOUT)
+    if r.status_code != 200:
+        print(f"Error fetching movies from Radarr: {r.status_code}")
+        return cached or []
+    data = r.json()
+    movies = data if isinstance(data, list) else []
+    _MOVIES_CACHE["ts"] = now
+    _MOVIES_CACHE["data"] = movies
+    return movies
 
 # --- Data object ---
 @dataclass
@@ -45,12 +67,7 @@ def radarr_get_all_movies(db: db_core.MediaDB | None = None) -> List[RadarrMedia
     Returns a list of RadarrMedia objects.
     """
     cfg = _get_config(db)
-    r = requests.get(f"{cfg['url']}/api/v3/movie", headers=cfg["headers"])
-    if r.status_code != 200:
-        print(f"Error fetching movies from Radarr: {r.status_code}")
-        return []
-
-    movies = r.json()
+    movies = _radarr_get_movies_raw(db)
     result = []
     for m in movies:
         media = RadarrMedia(

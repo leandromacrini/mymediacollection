@@ -1,7 +1,7 @@
 import os
 import re
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for, flash
+from flask import Blueprint, jsonify, redirect, render_template, request, url_for, flash, current_app
 
 from api import animeworld_api as aw_api
 from api import radarr_api
@@ -17,9 +17,11 @@ bp = Blueprint("wanted", __name__)
 def wanted_view():
     radarr_cfg = db.get_service_config("Radarr")
     radarr_url = radarr_api.radarr_get_client(db)["url"]
+    sonarr_url = sonarr_api.sonarr_get_client(db)["url"]
     return render_template(
         "wanted.html",
         radarr_url=radarr_url,
+        sonarr_url=sonarr_url,
         radarr_defaults={
             "root_folder": radarr_cfg.get("radarr_root_folder"),
             "profile_id": radarr_cfg.get("radarr_profile_id"),
@@ -32,32 +34,15 @@ def wanted_view():
 def wanted_content():
     wanted_list = db.get_wanted_items(limit=None)
     radarr_url = radarr_api.radarr_get_client(db)["url"]
-    radarr_movies = radarr_api.radarr_get_all_movies(db)
-    radarr_tmdb = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id}
-    radarr_downloaded = {str(m.tmdb_id) for m in radarr_movies if m.tmdb_id and m.has_file}
-    radarr_root_map = {str(m.tmdb_id): (m.root_folder or "") for m in radarr_movies if m.tmdb_id}
     sonarr_url = sonarr_api.sonarr_get_client(db)["url"]
-    sonarr_series = sonarr_api.sonarr_get_all_series(db)
-    sonarr_tvdb = {str(s.tvdb_id) for s in sonarr_series if s.tvdb_id}
-    sonarr_slug_map = {str(s.tvdb_id): s.slug for s in sonarr_series if s.tvdb_id and s.slug}
-    sonarr_root_map = {str(s.tvdb_id): (s.root_folder or "") for s in sonarr_series if s.tvdb_id}
-    sonarr_series_stats = sonarr_api.sonarr_get_series_stats(db)
+    radarr_tmdb = {item.external_ids.get("radarr") for item in wanted_list if item.external_ids.get("radarr")}
+    sonarr_tvdb = {item.external_ids.get("sonarr") for item in wanted_list if item.external_ids.get("sonarr")}
+    radarr_downloaded = set()
     sonarr_downloaded = set()
+    radarr_root_map = {}
+    sonarr_root_map = {}
     sonarr_progress = {}
-    for s in sonarr_series_stats:
-        tvdb_id = s.get("tvdbId")
-        stats = s.get("statistics") or {}
-        episode_count = stats.get("episodeCount")
-        if episode_count is None:
-            episode_count = stats.get("totalEpisodeCount")
-        episode_file_count = stats.get("episodeFileCount") or 0
-        if tvdb_id:
-            sonarr_progress[str(tvdb_id)] = {
-                "downloaded": int(episode_file_count),
-                "total": episode_count if episode_count is not None else None,
-            }
-        if tvdb_id and episode_count and episode_file_count >= episode_count:
-            sonarr_downloaded.add(str(tvdb_id))
+    sonarr_slug_map = {}
     import_paths = {}
     for item in wanted_list:
         if item.source != "plex db" or not item.source_ref:
@@ -239,8 +224,20 @@ def wanted_lookup_tvdb(media_item_id):
     if not item or item.media_type != "series":
         return json_items([])
 
-    lookup_title = request.args.get("q") or get_lookup_title(item)
-    results = sonarr_api.sonarr_lookup(lookup_title, db)
+    raw_query = request.args.get("q") or ""
+    raw_query = raw_query.strip()
+    slug_query = None
+    if raw_query:
+        url_match = re.search(r"thetvdb\.com/series/([^/?#]+)", raw_query, re.IGNORECASE)
+        if url_match:
+            slug_query = url_match.group(1).strip()
+    if slug_query:
+        lookup_title = slug_query.replace("-", " ").strip() or slug_query
+        results = sonarr_api.sonarr_lookup(lookup_title, db)
+        results = [r for r in results if r.slug == slug_query]
+    else:
+        lookup_title = raw_query or get_lookup_title(item)
+        results = sonarr_api.sonarr_lookup(lookup_title, db)
     items = [
         {
             "title": r.title,
@@ -297,28 +294,149 @@ def wanted_set_external(media_item_id):
 
     in_radarr = False
     in_sonarr = False
+    radarr_root = None
+    radarr_profile_id = None
+    sonarr_root = None
+    sonarr_profile_id = None
+    sonarr_slug = None
+    downloaded_current = None
+    downloaded_total = None
+
     if source == "tmdb" and item.media_type == "movie":
         try:
             tmdb_val = int(external_id)
         except (TypeError, ValueError):
             tmdb_val = None
         if tmdb_val:
-            existing = radarr_api.radarr_get_by_tmdb(tmdb_val, db)
-            if existing:
+            existing_raw = radarr_api.radarr_get_by_tmdb_raw(tmdb_val, db)
+            if existing_raw:
                 db.add_external_id(media_item_id, "radarr", str(tmdb_val))
                 in_radarr = True
+                radarr_root = existing_raw.get("rootFolderPath") or None
+                radarr_profile_id = existing_raw.get("qualityProfileId")
+                downloaded_total = 1
+                downloaded_current = 1 if existing_raw.get("hasFile") else 0
+
     if source == "tvdb" and item.media_type == "series":
         try:
             tvdb_val = int(external_id)
         except (TypeError, ValueError):
             tvdb_val = None
         if tvdb_val:
-            existing = sonarr_api.sonarr_get_by_tvdb(tvdb_val, db)
-            if existing:
+            existing_raw = sonarr_api.sonarr_get_by_tvdb_raw(tvdb_val, db)
+            if existing_raw:
                 db.add_external_id(media_item_id, "sonarr", str(tvdb_val))
                 in_sonarr = True
+                sonarr_root = existing_raw.get("rootFolderPath") or None
+                sonarr_profile_id = existing_raw.get("qualityProfileId")
+                sonarr_slug = existing_raw.get("titleSlug") or None
+                try:
+                    stats_list = sonarr_api.sonarr_get_series_stats(db)
+                except Exception as exc:
+                    current_app.logger.warning("wanted external sonarr stats failed id=%s error=%s", tvdb_val, exc)
+                    stats_list = []
+                for s in stats_list:
+                    if str(s.get("tvdbId")) != str(tvdb_val):
+                        continue
+                    stats = s.get("statistics") or {}
+                    episode_count = stats.get("episodeCount")
+                    if episode_count is None:
+                        episode_count = stats.get("totalEpisodeCount")
+                    episode_file_count = stats.get("episodeFileCount") or 0
+                    if episode_count is not None:
+                        downloaded_total = int(episode_count)
+                        downloaded_current = int(episode_file_count)
+                    break
 
-    return jsonify({"ok": True, "in_radarr": in_radarr, "in_sonarr": in_sonarr})
+    return jsonify({
+        "ok": True,
+        "in_radarr": in_radarr,
+        "in_sonarr": in_sonarr,
+        "radarr_root": radarr_root,
+        "radarr_profile_id": radarr_profile_id,
+        "sonarr_root": sonarr_root,
+        "sonarr_profile_id": sonarr_profile_id,
+        "sonarr_slug": sonarr_slug,
+        "downloaded_current": downloaded_current,
+        "downloaded_total": downloaded_total
+    })
+
+@bp.route("/api/wanted/<int:media_item_id>/status")
+def wanted_status(media_item_id):
+    item = db.get_media_item(media_item_id)
+    if not item:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+
+    tmdb_id = item.external_ids.get("tmdb")
+    tvdb_id = item.external_ids.get("tvdb")
+    in_radarr = False
+    in_sonarr = False
+    radarr_root = None
+    radarr_profile_id = None
+    sonarr_root = None
+    sonarr_profile_id = None
+    sonarr_slug = None
+    downloaded_current = None
+    downloaded_total = None
+
+    if tmdb_id and item.media_type == "movie":
+        try:
+            movie_raw = radarr_api.radarr_get_by_tmdb_raw(int(tmdb_id), db)
+        except Exception as exc:
+            current_app.logger.warning("wanted status radarr failed id=%s error=%s", tmdb_id, exc)
+            movie_raw = None
+        if movie_raw:
+            in_radarr = True
+            if not item.external_ids.get("radarr"):
+                db.add_external_id(media_item_id, "radarr", str(tmdb_id))
+            radarr_root = movie_raw.get("rootFolderPath") or None
+            radarr_profile_id = movie_raw.get("qualityProfileId")
+            downloaded_total = 1
+            downloaded_current = 1 if movie_raw.get("hasFile") else 0
+
+    if tvdb_id and item.media_type == "series":
+        try:
+            series_raw = sonarr_api.sonarr_get_by_tvdb_raw(int(tvdb_id), db)
+        except Exception as exc:
+            current_app.logger.warning("wanted status sonarr failed id=%s error=%s", tvdb_id, exc)
+            series_raw = None
+        if series_raw:
+            in_sonarr = True
+            if not item.external_ids.get("sonarr"):
+                db.add_external_id(media_item_id, "sonarr", str(tvdb_id))
+            sonarr_root = series_raw.get("rootFolderPath") or None
+            sonarr_profile_id = series_raw.get("qualityProfileId")
+            sonarr_slug = series_raw.get("titleSlug") or None
+            try:
+                stats_list = sonarr_api.sonarr_get_series_stats(db)
+            except Exception as exc:
+                current_app.logger.warning("wanted status sonarr stats failed id=%s error=%s", tvdb_id, exc)
+                stats_list = []
+            for s in stats_list:
+                if str(s.get("tvdbId")) != str(tvdb_id):
+                    continue
+                stats = s.get("statistics") or {}
+                episode_count = stats.get("episodeCount")
+                if episode_count is None:
+                    episode_count = stats.get("totalEpisodeCount")
+                episode_file_count = stats.get("episodeFileCount") or 0
+                if episode_count is not None:
+                    downloaded_total = int(episode_count)
+                    downloaded_current = int(episode_file_count)
+                break
+
+    return jsonify({
+        "ok": True,
+        "in_radarr": in_radarr,
+        "in_sonarr": in_sonarr,
+        "radarr_root": radarr_root,
+        "radarr_profile_id": radarr_profile_id,
+        "sonarr_root": sonarr_root,
+        "sonarr_profile_id": sonarr_profile_id,
+        "sonarr_slug": sonarr_slug,
+        "downloaded_current": downloaded_current,
+        "downloaded_total": downloaded_total
+    })
 
 
 @bp.route("/api/wanted/<int:media_item_id>/radarr/add", methods=["POST"])
@@ -930,6 +1048,8 @@ def wanted_bulk_lookup_tvdb():
     if not media_ids:
         return jsonify({"ok": False, "error": "missing_media_ids"}), 400
 
+    current_app.logger.info("bulk_lookup tvdb: requested=%s", len(media_ids))
+
     items = []
     skipped = []
     for raw_id in media_ids:
@@ -976,6 +1096,11 @@ def wanted_bulk_lookup_tvdb():
             "candidates": candidates
         })
 
+    current_app.logger.info(
+        "bulk_lookup tvdb: items=%s skipped=%s",
+        len(items),
+        len(skipped)
+    )
     return jsonify({"ok": True, "source": "tvdb", "items": items, "skipped": skipped})
 
 
@@ -985,6 +1110,8 @@ def wanted_bulk_lookup_tmdb():
     media_ids = data.get("media_ids") or []
     if not media_ids:
         return jsonify({"ok": False, "error": "missing_media_ids"}), 400
+
+    current_app.logger.info("bulk_lookup tmdb: requested=%s", len(media_ids))
 
     items = []
     skipped = []
@@ -1034,6 +1161,11 @@ def wanted_bulk_lookup_tmdb():
             "candidates": candidates
         })
 
+    current_app.logger.info(
+        "bulk_lookup tmdb: items=%s skipped=%s",
+        len(items),
+        len(skipped)
+    )
     return jsonify({"ok": True, "source": "tmdb", "items": items, "skipped": skipped})
 
 
@@ -1044,6 +1176,7 @@ def wanted_bulk_external():
     if not items:
         return jsonify({"ok": False, "error": "missing_items"}), 400
 
+    current_app.logger.info("bulk_external: requested=%s", len(items))
     updated = 0
     skipped = 0
     errors = 0
@@ -1118,6 +1251,12 @@ def wanted_bulk_external():
             "in_sonarr": in_sonarr
         })
 
+    current_app.logger.info(
+        "bulk_external: updated=%s skipped=%s errors=%s",
+        updated,
+        skipped,
+        errors
+    )
     return jsonify({
         "ok": True,
         "updated": updated,
@@ -1125,3 +1264,33 @@ def wanted_bulk_external():
         "errors": errors,
         "items": updated_items
     })
+
+
+@bp.route("/api/wanted/<int:media_item_id>/external/delete", methods=["POST"])
+def wanted_delete_external(media_item_id):
+    data = request.get_json(silent=True) or {}
+    source = data.get("source")
+    if not source:
+        return jsonify({"ok": False, "error": "missing_source"}), 400
+
+    item = db.get_media_item(media_item_id)
+    if not item:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+
+    removed = []
+    def _remove(src: str):
+        if db.delete_external_id(media_item_id, src):
+            removed.append(src)
+
+    _remove(source)
+    if source == "tvdb":
+        _remove("tvdb_link")
+        _remove("sonarr")
+    if source == "tmdb":
+        _remove("radarr")
+    if source == "anilist":
+        _remove("anilist_link")
+
+    return jsonify({"ok": True, "removed": removed})
+
+

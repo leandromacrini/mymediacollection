@@ -170,6 +170,16 @@ class MediaDB:
                 WHERE id = %s
             """, (media_item_id,))
             return cur.rowcount > 0
+
+    def delete_external_id(self, media_item_id: int, source: str) -> bool:
+        if not media_item_id or not source:
+            return False
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                DELETE FROM external_ids
+                WHERE media_item_id = %s AND source = %s
+            """, (media_item_id, source))
+            return cur.rowcount > 0
     
     def get_wanted_items(self, media_type:str | None = None, limit:int = 5) -> list[Media]:
         query = """

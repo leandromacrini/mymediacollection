@@ -1,6 +1,8 @@
-import os
+﻿import os
 import requests
+from bs4 import BeautifulSoup
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
+from urllib.parse import urljoin
 
 from api import ddunlimited_api
 from api import emule_api
@@ -9,6 +11,7 @@ from api import sonarr_api
 from app.extensions import db
 
 bp = Blueprint("settings", __name__)
+
 
 def _build_settings_map(service) -> dict[str, str]:
     return {setting.key: setting.value for setting in service.settings}
@@ -127,6 +130,7 @@ def settings_view():
 
             if request.headers.get("X-Requested-With") == "XMLHttpRequest":
                 return jsonify({"ok": ok, "message": message, "category": "success" if ok else "danger"})
+
             flash(message, "success" if ok else "danger")
 
         return redirect(url_for("settings.settings_view"))

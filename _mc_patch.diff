@@ -1,0 +1,159 @@
+﻿diff --git a/tools/mircrew_userscript.js b/tools/mircrew_userscript.js
+index 39b6bca..0000000 100644
+--- a/tools/mircrew_userscript.js
++++ b/tools/mircrew_userscript.js
+@@ -29,6 +29,8 @@
+   const LIST_PAUSE_SECONDS = 15;
+   const DETAIL_PAUSE_EVERY_LINKS = 20;
+   const DETAIL_PAUSE_SECONDS = 20;
++  const LIST_STOP_AFTER_CONSECUTIVE_NO_NEW_PAGES = 2;
++  const MAX_CONSECUTIVE_HTTP_ERRORS = 5;
+@@ -48,8 +50,23 @@
+   async function maybeLongPause(everyN, seconds, doneCount, label) {
+     if (!everyN || everyN <= 0 || !seconds || seconds <= 0) return;
+     if (doneCount > 0 && doneCount % everyN === 0) {
+       uiLog(`${label}: pausa di ${seconds}s dopo ${doneCount} richieste.`);
++      await sendKeepAlivePing(label);
+       await sleep(seconds * 1000);
+     }
+   }
++
++  async function sendKeepAlivePing(label) {
++    try {
++      await fetch(`${location.origin}${BASE_LIST_PATH}`, {
++        credentials: "include",
++        cache: "no-store",
++      });
++      uiLog(`${label}: keep-alive ping ok.`);
++    } catch (err) {
++      uiLog(`${label}: keep-alive ping fallito (${err}).`);
++    }
++  }
+@@ -89,10 +106,38 @@
+   function buildCategoryUrl(catValue) {
+     const u = new URL(window.location.href);
+     u.pathname = BASE_LIST_PATH;
+     u.searchParams.set("cat", String(catValue));
+     if (!u.searchParams.get("sk")) u.searchParams.set("sk", "i");
+-    if (!u.searchParams.get("sd")) u.searchParams.set("sd", "a");
++    if (!u.searchParams.get("sd")) u.searchParams.set("sd", "d");
+     u.searchParams.delete("start");
+     u.searchParams.delete("st");
+     return u.toString();
+   }
++
++  function hasUsefulDetailData(row) {
++    const hasMagnets = Array.isArray(row.magnet_links) && row.magnet_links.length > 0;
++    const hasTorrents = Array.isArray(row.torrent_links) && row.torrent_links.length > 0;
++    const hasSize = Number(row.size_bytes || 0) > 0;
++    const hasMagName = Boolean(row.magnet_info && normalizeSpace(row.magnet_info.display_name || ""));
++    return hasMagnets || hasTorrents || hasSize || hasMagName;
++  }
++
++  function bumpConsecutiveHttpErrors(runStats, reason) {
++    runStats.consecutive_http_errors = (runStats.consecutive_http_errors || 0) + 1;
++    uiLog(`${reason}: errori consecutivi=${runStats.consecutive_http_errors}/${MAX_CONSECUTIVE_HTTP_ERRORS}`);
++    if (runStats.consecutive_http_errors >= MAX_CONSECUTIVE_HTTP_ERRORS) {
++      stopRequested = true;
++      uiStatus(`Stop automatico: troppi errori consecutivi (${runStats.consecutive_http_errors}).`);
++      uiLog("Stop automatico per protezione anti-blocco.");
++      return true;
++    }
++    return false;
++  }
++
++  function resetConsecutiveHttpErrors(runStats) {
++    runStats.consecutive_http_errors = 0;
++  }
+@@ -425,7 +470,14 @@
+   async function getDetailQueueByCategories(db, categoryValues, forceRecheck) {
+     const selectedSet = new Set((categoryValues || []).map(String));
+     const all = await getAllReleases(db);
+     const rows = all.filter((r) => selectedSet.has(String(r.category_value || "")));
+-    const filtered = forceRecheck ? rows : rows.filter((r) => (r.detail_status || "pending") !== "ok");
++    const filtered = forceRecheck
++      ? rows
++      : rows.filter((r) => {
++          const status = r.detail_status || "pending";
++          if (status === "error" || status === "pending" || status === "running") return true;
++          if (status === "ok") return !hasUsefulDetailData(r);
++          return true;
++        });
+     return filtered.sort((a, b) => Number(a.release_id) - Number(b.release_id));
+   }
+@@ -603,20 +655,34 @@
+     let pageCount = 0;
+     let newCount = 0;
+     let maxPages = null;
++    let noNewPages = 0;
+     uiLog(`Fase 1: categoria '${category.label}' start: ${pageUrl}`);
+@@ -610,11 +676,14 @@
+       try {
+         ({ res, doc } = await fetchDocument(pageUrl));
+       } catch (err) {
+         uiLog(`Fase 1 error ${category.label} p${pageCount}: ${err}`);
++        if (bumpConsecutiveHttpErrors(runStats, `Fase 1 ${category.label} p${pageCount}`)) break;
+         break;
+       }
+       if (!res.ok) {
+         uiLog(`Fase 1 stop ${category.label}: HTTP ${res.status}`);
++        if (bumpConsecutiveHttpErrors(runStats, `Fase 1 ${category.label} p${pageCount} http=${res.status}`)) break;
+         break;
+       }
++      resetConsecutiveHttpErrors(runStats);
+       if (maxPages == null) maxPages = detectMaxPages(doc);
+       const links = extractReleaseLinks(doc, pageUrl);
+@@ -634,6 +703,17 @@
+       const pageLabel = maxPages ? `${pageCount}/${maxPages}` : `${pageCount}`;
+       uiStatus(`Fase 1 ${category.label} p${pageLabel} | nuovi_cat=${newCount} | nuovi_run=${runStats.new_links}`);
+       uiLog(`Fase 1 ${category.label} p${pageLabel}: links=${links.length}, nuovi_pagina=${addedThisPage}, nuovi_cat=${newCount}`);
++      if (links.length > 0 && addedThisPage === 0) {
++        noNewPages += 1;
++      } else if (addedThisPage > 0) {
++        noNewPages = 0;
++      }
++      if (noNewPages >= LIST_STOP_AFTER_CONSECUTIVE_NO_NEW_PAGES) {
++        uiLog(`Fase 1 ${category.label}: stop incrementale (pagine consecutive senza nuovi=${noNewPages}).`);
++        break;
++      }
++
+       await maybeLongPause(LIST_PAUSE_EVERY_LINKS, LIST_PAUSE_SECONDS, pageCount, "Fase 1");
+@@ -668,6 +748,7 @@
+       uiLog(`Fase 2 ${idx}/${total} id=${rid}: START`);
+       let { res, doc } = await fetchDocument(url);
+       if (!res.ok) {
++        bumpConsecutiveHttpErrors(runInfo, `Fase 2 id=${rid} release_page http=${res.status}`);
+         runInfo.details_error += 1;
+         await updateReleaseDetails(db, rid, { detail_status: "error", detail_error: `HTTP ${res.status}`, detail_error_stage: "release_page" });
+         uiLog(`Fase 2 ${idx}/${total} id=${rid}: ESITO=ERROR stage=release_page http=${res.status}`);
+         return;
+       }
++      resetConsecutiveHttpErrors(runInfo);
+@@ -685,11 +766,13 @@
+       if (!magnets.length && thanksUrl) {
+         const thanks = await fetchDocument(thanksUrl);
+         if (thanks.res.ok) {
++          resetConsecutiveHttpErrors(runInfo);
+           doc = thanks.doc;
+           magnets = extractMagnets(doc, url);
+           torrents = extractTorrentLinks(doc, url);
+           thanksClicked = true;
+         } else {
++          bumpConsecutiveHttpErrors(runInfo, `Fase 2 id=${rid} thanks_page http=${thanks.res.status}`);
+           runInfo.details_error += 1;
+           await updateReleaseDetails(db, rid, {
+             detail_status: "error",
+@@ -731,6 +814,7 @@
+       const sizeSource = (magInfo && magInfo.size_bytes) ? "magnet_xl" : (size.size_bytes ? "page_text" : "none");
+       uiLog(`Fase 2 ${idx}/${total} id=${rid}: ESITO=OK magnet=${magnets.length} torrent=${torrents.length} thanks=${thanksState} size_bytes=${finalSizeBytes || "-"} size_source=${sizeSource} size_raw=${size.size_text_raw || "-"}`);
+     } catch (err) {
++      bumpConsecutiveHttpErrors(runInfo, `Fase 2 id=${rid} exception`);
+       runInfo.details_error += 1;
+       await updateReleaseDetails(db, rid, { detail_status: "error", detail_error: String(err || "unknown"), detail_error_stage: "exception" });
+       uiLog(`Fase 2 ${idx}/${total} id=${rid}: ESITO=ERROR stage=exception err=${err}`);
+@@ -761,6 +845,7 @@
+       details_thanks: 0,
+       details_with_magnet: 0,
+       details_with_size: 0,
++      consecutive_http_errors: 0,
+     };

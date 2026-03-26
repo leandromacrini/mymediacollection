@@ -90,6 +90,9 @@
 .wanted-actions .btn i {
     font-size: 0.9em;
 }
+.bulk-match-link {
+    padding-right: 0.35rem;
+}
 .wanted-actions {
     flex-wrap: nowrap;
     gap: 0.35rem;
