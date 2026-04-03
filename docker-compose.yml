@@ -6,7 +6,7 @@ networks:
     name: bolognanerd_bolognanerd_network
 
 volumes:
-  nas_data_nfs:
+  bolognanerd_nas_data_nfs:
     external: true
 
 services:
@@ -24,13 +24,17 @@ services:
       - "5678:5678"
     volumes:
       - ./:/app
+      - type: bind
+        source: ${FILEBOT_LICENSE_DIR}
+        target: /licenses
+        read_only: true
       - type: volume
-        source: nas_data_nfs
+        source: bolognanerd_nas_data_nfs
         target: /data
         volume:
           subpath: Configurazioni/my-media-collection/data
       - type: volume
-        source: nas_data_nfs
+        source: bolognanerd_nas_data_nfs
         target: /uploads
         volume:
           subpath: Configurazioni/my-media-collection/uploads

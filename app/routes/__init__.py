@@ -2,6 +2,7 @@ from app.routes import animeworld
 from app.routes import dashboard
 from app.routes import ddunlimited
 from app.routes import imports
+from app.routes import media_resolver
 from app.routes import mircrew
 from app.routes import plex
 from app.routes import radarr
