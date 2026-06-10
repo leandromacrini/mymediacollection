@@ -265,3 +265,294 @@ VALUES
 ('Serie TV A-Z', 'https://ddunlimited.net/viewtopic.php?t=61463', 'series', 'tv', NULL, TRUE),
 ('Movie A', 'https://ddunlimited.net/viewtopic.php?f=1988&t=3941486', 'movie', 'film', NULL, TRUE)
 ON CONFLICT (url) DO NOTHING;
+
+-- ===============================================
+-- Telegram
+-- ===============================================
+
+CREATE TABLE IF NOT EXISTS telegram_channel (
+    id BIGSERIAL PRIMARY KEY,
+    channel_username TEXT NOT NULL UNIQUE,
+    channel_id BIGINT UNIQUE,
+    channel_title TEXT,
+    is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+    refresh_interval_minutes INTEGER NOT NULL DEFAULT 60,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS telegram_channel_state (
+    channel_id BIGINT PRIMARY KEY,
+    channel_username TEXT,
+    channel_title TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    last_scanned_message_id BIGINT NOT NULL DEFAULT 0,
+    latest_known_message_id BIGINT,
+    last_scan_at TIMESTAMPTZ,
+    last_full_scan_at TIMESTAMPTZ,
+    scan_error TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS telegram_release (
+    id BIGSERIAL PRIMARY KEY,
+    channel_id BIGINT NOT NULL,
+    release_key TEXT UNIQUE,
+    first_message_id BIGINT,
+    last_message_id BIGINT,
+    parent_message_id BIGINT,
+    header_message_id BIGINT,
+    title_raw TEXT,
+    title_display TEXT,
+    title_normalized TEXT,
+    forward_title_dominant TEXT,
+    release_kind TEXT,
+    year_guess INTEGER,
+    season_guess INTEGER,
+    poster_message_id BIGINT,
+    photo_count INTEGER NOT NULL DEFAULT 0,
+    media_count INTEGER NOT NULL DEFAULT 0,
+    total_size_bytes BIGINT NOT NULL DEFAULT 0,
+    published_at TIMESTAMPTZ,
+    updated_source_at TIMESTAMPTZ,
+    source_ref TEXT,
+    notes TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS telegram_media_message (
+    channel_id BIGINT NOT NULL,
+    message_id BIGINT NOT NULL,
+    release_id BIGINT,
+    message_date TIMESTAMPTZ,
+    media_kind TEXT,
+    file_name TEXT,
+    file_size BIGINT,
+    mime_type TEXT,
+    forward_chat_title TEXT,
+    forward_chat_username TEXT,
+    text_raw TEXT,
+    grouped_id TEXT,
+    reply_to_message_id BIGINT,
+    has_media BOOLEAN NOT NULL DEFAULT FALSE,
+    has_text BOOLEAN NOT NULL DEFAULT FALSE,
+    is_video_like BOOLEAN NOT NULL DEFAULT FALSE,
+    release_kind_guess TEXT,
+    title_guess TEXT,
+    title_guess_normalized TEXT,
+    season_guess INTEGER,
+    episode_guess INTEGER,
+    year_guess INTEGER,
+    source_ref TEXT,
+    payload_json JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (channel_id, message_id)
+);
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS release_key TEXT;
+
+ALTER TABLE telegram_channel
+ADD COLUMN IF NOT EXISTS channel_id BIGINT UNIQUE;
+
+ALTER TABLE telegram_channel
+ADD COLUMN IF NOT EXISTS channel_title TEXT;
+
+ALTER TABLE telegram_channel
+ADD COLUMN IF NOT EXISTS is_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE telegram_channel
+ADD COLUMN IF NOT EXISTS refresh_interval_minutes INTEGER NOT NULL DEFAULT 60;
+
+ALTER TABLE telegram_channel
+ADD COLUMN IF NOT EXISTS notes TEXT;
+
+ALTER TABLE telegram_channel_state
+ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE telegram_channel_state
+ADD COLUMN IF NOT EXISTS latest_known_message_id BIGINT;
+
+ALTER TABLE telegram_channel_state
+ADD COLUMN IF NOT EXISTS scan_error TEXT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS parent_message_id BIGINT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS header_message_id BIGINT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS title_display TEXT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS title_normalized TEXT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS forward_title_dominant TEXT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS release_kind TEXT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS year_guess INTEGER;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS season_guess INTEGER;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS poster_message_id BIGINT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS photo_count INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS media_count INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS total_size_bytes BIGINT NOT NULL DEFAULT 0;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS updated_source_at TIMESTAMPTZ;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS source_ref TEXT;
+
+ALTER TABLE telegram_release
+ADD COLUMN IF NOT EXISTS notes TEXT;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS text_raw TEXT;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS grouped_id TEXT;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS has_media BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS has_text BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS is_video_like BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS release_kind_guess TEXT;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS title_guess TEXT;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS title_guess_normalized TEXT;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS season_guess INTEGER;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS episode_guess INTEGER;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS year_guess INTEGER;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS source_ref TEXT;
+
+ALTER TABLE telegram_media_message
+ADD COLUMN IF NOT EXISTS payload_json JSONB;
+
+CREATE INDEX IF NOT EXISTS idx_telegram_channel_enabled
+ON telegram_channel (is_enabled);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_channel_username
+ON telegram_channel (channel_username);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_channel_state_username
+ON telegram_channel_state (channel_username);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_release_channel_published
+ON telegram_release (channel_id, published_at DESC);
+
+DROP INDEX IF EXISTS uq_telegram_release_release_key;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'uq_telegram_release_release_key'
+    ) THEN
+        ALTER TABLE telegram_release
+        ADD CONSTRAINT uq_telegram_release_release_key UNIQUE (release_key);
+    END IF;
+END
+$$;
+
+CREATE INDEX IF NOT EXISTS idx_telegram_release_title_normalized
+ON telegram_release (title_normalized);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_release_forward_title
+ON telegram_release (forward_title_dominant);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_media_release
+ON telegram_media_message (release_id);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_media_message_date
+ON telegram_media_message (channel_id, message_date DESC);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_media_title_guess_normalized
+ON telegram_media_message (title_guess_normalized);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_media_forward_title
+ON telegram_media_message (forward_chat_title);
+
+CREATE INDEX IF NOT EXISTS idx_telegram_media_video_like
+ON telegram_media_message (is_video_like);
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_telegram_release_channel_state'
+    ) THEN
+        ALTER TABLE telegram_release
+        ADD CONSTRAINT fk_telegram_release_channel_state
+        FOREIGN KEY (channel_id) REFERENCES telegram_channel_state(channel_id)
+        ON DELETE CASCADE;
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_telegram_media_channel_state'
+    ) THEN
+        ALTER TABLE telegram_media_message
+        ADD CONSTRAINT fk_telegram_media_channel_state
+        FOREIGN KEY (channel_id) REFERENCES telegram_channel_state(channel_id)
+        ON DELETE CASCADE;
+    END IF;
+END
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint
+        WHERE conname = 'fk_telegram_media_release'
+    ) THEN
+        ALTER TABLE telegram_media_message
+        ADD CONSTRAINT fk_telegram_media_release
+        FOREIGN KEY (release_id) REFERENCES telegram_release(id)
+        ON DELETE SET NULL;
+    END IF;
+END
+$$;

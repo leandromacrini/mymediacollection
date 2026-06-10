@@ -2,7 +2,7 @@ import os
 from flask import Flask
 
 from app.extensions import db
-from app.routes import animeworld, dashboard, ddunlimited, imports, media_resolver, mircrew, plex, radarr, settings, sonarr, wanted
+from app.routes import animeworld, dashboard, ddunlimited, imports, media_resolver, mircrew, plex, radarr, settings, sonarr, telegram, wanted
 
 
 def create_app() -> Flask:
@@ -24,5 +24,6 @@ def create_app() -> Flask:
     app.register_blueprint(media_resolver.bp)
     app.register_blueprint(mircrew.bp)
     app.register_blueprint(plex.bp)
+    app.register_blueprint(telegram.bp)
 
     return app

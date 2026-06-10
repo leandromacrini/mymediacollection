@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/telegram.css') }}">
+{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <div>
+    <div class="text-muted small mb-1">
+      <a href="{{ url_for('telegram.telegram_channels') }}">Telegram</a>
+      {% if release.channel_row_id %}
+      / <a href="{{ url_for('telegram.telegram_channel_detail', row_id=release.channel_row_id) }}">{{ release.channel_username or 'Canale' }}</a>
+      {% endif %}
+      / Release
+    </div>
+    <h2 class="mb-0"><i class="bi bi-film"></i> {{ release.title_display or release.title_raw or release.title_normalized or 'Release Telegram' }}</h2>
+    <small class="text-muted">Release candidate #{{ release.id }}</small>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    <span class="telegram-chip">{{ release.linked_messages or 0 }} messaggi</span>
+    <span class="telegram-chip">{{ release.media_count or 0 }} media</span>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-4">
+    <div class="telegram-card">
+      <div class="telegram-card-title">Metadata candidate</div>
+      <dl class="row mb-0 telegram-meta">
+        <dt class="col-5">Titolo</dt><dd class="col-7">{{ release.title_display or '-' }}</dd>
+        <dt class="col-5">Normalized</dt><dd class="col-7">{{ release.title_normalized or '-' }}</dd>
+        <dt class="col-5">Kind</dt><dd class="col-7">{{ release.release_kind or '-' }}</dd>
+        <dt class="col-5">Anno</dt><dd class="col-7">{{ release.year_guess or '-' }}</dd>
+        <dt class="col-5">Season</dt><dd class="col-7">{{ release.season_guess or '-' }}</dd>
+        <dt class="col-5">Forward</dt><dd class="col-7">{{ release.forward_title_dominant or '-' }}</dd>
+        <dt class="col-5">Source ref</dt><dd class="col-7">{{ release.source_ref or '-' }}</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="col-12 col-lg-8">
+    <div class="telegram-card">
+      <div class="telegram-card-title">Punti di accesso prossimi step</div>
+      <ul class="mb-0 telegram-list">
+        <li>Qui collegheremo resolver MMC e confronto metadata.</li>
+        <li>Qui arriveranno add to wanted / go to wanted / source link.</li>
+        <li>Qui arrivera la modale per aggiungere e rimuovere messaggi dalla release.</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+  <h3 class="h5 mb-0">Messaggi associati</h3>
+  <div class="text-muted small">Vista raw dei messaggi usati per comporre questa release candidate.</div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-striped table-bordered align-middle telegram-table">
+    <thead class="table-light">
+      <tr>
+        <th style="width: 110px;">Msg ID</th>
+        <th style="width: 180px;">Data</th>
+        <th style="width: 110px;">Kind</th>
+        <th>Contenuto</th>
+        <th style="width: 120px;">Guess</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for message in messages %}
+      <tr>
+        <td>
+          {{ message.message_id }}
+          {% if release.channel_username %}
+          <div class="telegram-subline">
+            <a href="https://t.me/{{ release.channel_username.lstrip('@') }}/{{ message.message_id }}" target="_blank" rel="noopener">Apri</a>
+          </div>
+          {% endif %}
+        </td>
+        <td>{{ message.message_date.strftime('%Y-%m-%d %H:%M') if message.message_date else '-' }}</td>
+        <td>{{ message.media_kind or '' }}</td>
+        <td>
+          {% if message.file_name %}
+          <div class="fw-semibold">{{ message.file_name }}</div>
+          {% endif %}
+          {% if message.text_raw %}
+          <div class="telegram-subline">{{ message.text_raw }}</div>
+          {% endif %}
+          {% if message.forward_chat_title %}
+          <div class="telegram-subline">forward: {{ message.forward_chat_title }}</div>
+          {% endif %}
+        </td>
+        <td>
+          <div>{{ message.title_guess or '-' }}</div>
+          <div class="telegram-subline">norm: {{ message.title_guess_normalized or '-' }}</div>
+          <div class="telegram-subline">S {{ message.season_guess or '-' }} / E {{ message.episode_guess or '-' }} / Y {{ message.year_guess or '-' }}</div>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="5" class="text-muted">Nessun messaggio associato alla release.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

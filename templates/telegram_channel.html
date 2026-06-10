@@ -1,0 +1,99 @@
+{% extends "layout.html" %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/telegram.css') }}">
+{% endblock %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <div>
+    <div class="text-muted small mb-1"><a href="{{ url_for('telegram.telegram_index') }}">Telegram</a> / Canale</div>
+    <h2 class="mb-0"><i class="bi bi-send-check"></i> {{ channel.channel_username or 'Canale Telegram' }}</h2>
+    <small class="text-muted">{{ channel.channel_title or 'Titolo non ancora disponibile' }}</small>
+  </div>
+  <div class="d-flex gap-2 align-items-center">
+    <span class="telegram-chip">msg: {{ channel.message_count or 0 }}</span>
+    <span class="telegram-chip">release: {{ channel.release_count or 0 }}</span>
+    <form method="post" action="{{ url_for('telegram.telegram_channel_parse', row_id=channel.id) }}">
+      <button class="btn btn-primary btn-sm" type="submit">
+        <i class="bi bi-arrow-repeat me-1"></i>Parse/Reparse
+      </button>
+    </form>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12 col-lg-4">
+    <div class="telegram-card">
+      <div class="telegram-card-title">Stato canale</div>
+      <dl class="row mb-0 telegram-meta">
+        <dt class="col-5">Username</dt><dd class="col-7">{{ channel.channel_username or '-' }}</dd>
+        <dt class="col-5">channel_id</dt><dd class="col-7">{{ channel.channel_id or '-' }}</dd>
+        <dt class="col-5">Enabled</dt><dd class="col-7">{{ 'Yes' if channel.is_enabled else 'No' }}</dd>
+        <dt class="col-5">Active</dt><dd class="col-7">{{ channel.is_active if channel.is_active is not none else '-' }}</dd>
+        <dt class="col-5">Ultimo scan</dt><dd class="col-7">{{ channel.last_scan_at.strftime('%Y-%m-%d %H:%M') if channel.last_scan_at else '-' }}</dd>
+        <dt class="col-5">Latest msg</dt><dd class="col-7">{{ channel.latest_known_message_id or '-' }}</dd>
+      </dl>
+    </div>
+  </div>
+  <div class="col-12 col-lg-8">
+    <div class="telegram-card">
+      <div class="telegram-card-title">Note operative</div>
+      <div class="text-muted small">
+        Questa pagina e il punto di accesso per il workflow Telegram in MMC. Per ora mostra i raw già importati nel DB condiviso e permette di rigenerare le release candidate col builder minimale esistente.
+      </div>
+      {% if channel.scan_error %}
+      <div class="alert alert-warning py-2 px-3 mt-3 mb-0">{{ channel.scan_error }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+  <h3 class="h5 mb-0">Release candidate</h3>
+  <div class="text-muted small">Le release qui sotto sono il risultato del parser attuale, da considerare rivedibili.</div>
+</div>
+
+<div class="table-responsive">
+  <table class="table table-striped table-bordered align-middle telegram-table">
+    <thead class="table-light">
+      <tr>
+        <th>Titolo</th>
+        <th style="width: 100px;">Kind</th>
+        <th style="width: 90px;">Anno</th>
+        <th style="width: 90px;">Season</th>
+        <th style="width: 110px;">Media</th>
+        <th style="width: 130px;">Size</th>
+        <th style="width: 180px;">Pubblicata</th>
+        <th style="width: 120px;">Azioni</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for release in releases %}
+      <tr>
+        <td>
+          <div class="fw-semibold">{{ release.title_display or release.title_raw or release.title_normalized or 'Release senza titolo' }}</div>
+          <div class="telegram-subline">norm: {{ release.title_normalized or '-' }}</div>
+          {% if release.forward_title_dominant %}
+          <div class="telegram-subline">forward: {{ release.forward_title_dominant }}</div>
+          {% endif %}
+        </td>
+        <td>{{ release.release_kind or '' }}</td>
+        <td>{{ release.year_guess or '' }}</td>
+        <td>{{ release.season_guess or '' }}</td>
+        <td>{{ release.media_count or 0 }}</td>
+        <td>{{ release.total_size_bytes or 0 }}</td>
+        <td>{{ release.published_at.strftime('%Y-%m-%d %H:%M') if release.published_at else '-' }}</td>
+        <td>
+          <a class="btn btn-sm btn-outline-secondary telegram-action-btn" href="{{ url_for('telegram.telegram_release_detail', release_id=release.id) }}">
+            <i class="bi bi-eye"></i>
+          </a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8" class="text-muted">Nessuna release candidate disponibile per questo canale.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
