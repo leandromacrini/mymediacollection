@@ -13,3 +13,7 @@ MMC_DB_PASSWORD=...
 ```
 
 Then start the app normally. The DB connection uses these variables.
+
+## API Docs
+
+DDUnlimited API documentation lives in [docs/DDUNLIMITED_API.md](docs/DDUNLIMITED_API.md).

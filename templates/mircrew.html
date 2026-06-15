@@ -6,18 +6,31 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
   <div>
     <h2 class="mb-0"><i class="bi bi-hdd-stack"></i> MirCrew</h2>
-    <small class="text-muted">Importa il JSON esportato dallo userscript e cerca release da aggiungere ai wanted.</small>
+    <small class="text-muted">Cache locale liste MirCrew e lookup dettagli on demand via browser remoto.</small>
   </div>
   <div class="d-flex flex-wrap gap-2 align-items-center">
-    <div class="text-muted small" id="mircrew-cache-status">
-      {% if status.exists %}
-      Cache file: {{ status.count }} release | updated: {{ status.updated_at or '-' }} | RAM: {{ 'loaded' if status.cache_loaded else 'idle' }}
-      {% else %}
-      Cache file: non presente
+    <div class="small">
+      <span class="text-muted">Stato MirCrew:</span>
+      {% set browser_badge = 'bg-success-subtle text-success' if browser_status.state == 'authenticated' else 'bg-warning-subtle text-warning' if browser_status.state in ['auth_required', 'session_unknown'] else 'bg-danger-subtle text-danger' %}
+      <span class="badge {{ browser_badge }}">{{ browser_status.label }}</span>
+      {% if browser_status.login_url %}
+        <a class="btn btn-outline-secondary btn-sm ms-2" href="{{ browser_status.login_url }}" target="_blank" rel="noopener">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Apri login
+        </a>
       {% endif %}
     </div>
-    <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#mircrewImportModal" type="button">
-      <i class="bi bi-upload me-1"></i>Import JSON
+    <div class="text-muted small" id="mircrew-cache-status"
+         data-count="{{ status.count }}"
+         data-updated="{{ status.updated_at or '' }}">
+      Cache: {{ status.count }} release
+    </div>
+    <button class="btn btn-outline-primary btn-sm" id="mircrew-refresh-cache" type="button">
+      <i class="bi bi-arrow-clockwise me-1"></i>Ricarica cache
+    </button>
+    <button class="btn btn-outline-secondary btn-sm"
+            data-bs-toggle="modal"
+            data-bs-target="#mircrewSourcesModal">
+      <i class="bi bi-list-task"></i> Gestisci liste
     </button>
   </div>
 </div>
@@ -41,7 +54,7 @@
         <th style="width: 110px;">Tipo</th>
         <th style="width: 140px;">Categoria</th>
         <th style="width: 130px;">Size</th>
-        <th style="width: 170px;">Azioni</th>
+        <th style="width: 190px;">Azioni</th>
       </tr>
     </thead>
     <tbody>
@@ -69,6 +82,13 @@
               </button>
             </form>
           {% endif %}
+          <button class="btn btn-sm btn-outline-primary mircrew-detail-btn"
+                  type="button"
+                  data-release-id="{{ row.release_id }}"
+                  data-release-title="{{ row.title_hint|e }}"
+                  title="Dettaglio release">
+            <i class="bi bi-list"></i>
+          </button>
           <a class="btn btn-sm btn-outline-secondary" href="{{ row.release_url }}" target="_blank" rel="noopener" title="Apri release">
             <i class="bi bi-link-45deg"></i>
           </a>
@@ -80,26 +100,117 @@
 </div>
 {% endif %}
 
-<div class="modal fade" id="mircrewImportModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
+<div class="modal fade" id="mircrewDetailModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
-      <form method="post" action="{{ url_for('mircrew.mircrew_import_json') }}" enctype="multipart/form-data" id="mircrew-import-form">
-        <div class="modal-header">
-          <h5 class="modal-title">Import MirCrew JSON</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      <div class="modal-header">
+        <h5 class="modal-title" id="mircrew-detail-title">Dettaglio release</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mircrew-detail-loading text-muted small">Caricamento...</div>
+        <div class="mircrew-detail-content d-none">
+          <div class="small text-muted mb-2" id="mircrew-detail-meta"></div>
+          <div class="card shadow-sm border-0">
+            <div class="card-body">
+              <h6 class="text-uppercase text-muted small mb-2">Magnet</h6>
+              <div id="mircrew-detail-magnets" class="list-group mb-3"></div>
+              <h6 class="text-uppercase text-muted small mb-2">Torrent</h6>
+              <div id="mircrew-detail-torrents" class="list-group"></div>
+            </div>
+          </div>
+          <div class="mt-2 alert alert-warning d-none" id="mircrew-detail-error"></div>
         </div>
-        <div class="modal-body">
-          <p class="text-muted small mb-2">Carica il file JSON esportato dallo userscript MirCrew.</p>
-          <input class="form-control" type="file" name="file" accept=".json,application/json" required>
-          <div class="form-text">La cache in RAM verra invalidata e ricaricata alla prima ricerca.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="mircrewSourcesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Liste MirCrew</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info small mb-3">
+          Configura le pagine lista MirCrew da scandire. Il refresh aggiorna solo la cache liste; i dettagli vengono risolti on demand.
         </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annulla</button>
-          <button type="submit" class="btn btn-primary" id="mircrew-import-submit">
-            <i class="bi bi-upload me-1"></i>Importa
-          </button>
+        <div class="table-responsive mb-3">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>URL</th>
+                <th>Categoria</th>
+                <th>Valore</th>
+                <th>Rel.</th>
+                <th>On</th>
+                <th class="text-end">Azioni</th>
+              </tr>
+            </thead>
+            <tbody id="mircrew-sources-body">
+              <tr><td colspan="7" class="text-muted">Caricamento...</td></tr>
+            </tbody>
+          </table>
         </div>
-      </form>
+        <hr class="my-3">
+        <div class="fw-semibold mb-2" id="mircrew-form-mode">Nuova lista</div>
+        <form id="mircrew-source-form" class="row g-2">
+          <input type="hidden" id="mircrew-source-id">
+          <div class="col-12 col-md-4">
+            <label class="form-label">Nome</label>
+            <input type="text" class="form-control form-control-sm" id="mircrew-name" required>
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label">Categoria label</label>
+            <input type="text" class="form-control form-control-sm" id="mircrew-category-label">
+          </div>
+          <div class="col-12 col-md-3">
+            <label class="form-label">Categoria value</label>
+            <input type="text" class="form-control form-control-sm" id="mircrew-category-value">
+          </div>
+          <div class="col-12 col-md-2">
+            <label class="form-label">Attiva</label>
+            <select class="form-select form-select-sm" id="mircrew-enabled">
+              <option value="true">True</option>
+              <option value="false">False</option>
+            </select>
+          </div>
+          <div class="col-12">
+            <label class="form-label">URL</label>
+            <input type="url" class="form-control form-control-sm" id="mircrew-url" required>
+          </div>
+          <div class="col-12 d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-sm btn-primary" id="mircrew-save-btn">Salva</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="mircrew-reset-btn">Reset</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="mircrewCacheModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="mircrew-cache-modal-title">Ricarica cache</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-2">
+          <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+          <div id="mircrew-cache-progress" class="small">Avvio ricarica...</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-danger btn-sm d-none" id="mircrew-cache-cancel">
+          <i class="bi bi-stop-circle me-1"></i>Annulla refresh
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Chiudi</button>
+      </div>
     </div>
   </div>
 </div>
@@ -107,5 +218,3 @@
 {% block extra_scripts %}
 <script src="{{ url_for('static', filename='scripts/mircrew.js') }}"></script>
 {% endblock %}
-
-

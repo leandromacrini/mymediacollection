@@ -9,6 +9,16 @@
     <small class="text-muted">Cerca nelle liste di segnalazioni e aggiungi ai wanted.</small>
   </div>
   <div class="d-flex flex-wrap gap-2 align-items-center">
+    <div class="small">
+      <span class="text-muted">Stato DDU:</span>
+      {% set browser_badge = 'bg-success-subtle text-success' if browser_status.state == 'authenticated' else 'bg-warning-subtle text-warning' if browser_status.state in ['auth_required', 'session_unknown'] else 'bg-danger-subtle text-danger' %}
+      <span class="badge {{ browser_badge }}">{{ browser_status.label }}</span>
+      {% if browser_status.login_url %}
+        <a class="btn btn-outline-secondary btn-sm ms-2" href="{{ browser_status.login_url }}" target="_blank" rel="noopener">
+          <i class="bi bi-box-arrow-up-right me-1"></i>Apri login
+        </a>
+      {% endif %}
+    </div>
     <div class="text-muted small" id="ddu-cache-status"
          data-count="{{ cache_status.count }}"
          data-updated="{{ cache_status.updated_at or '' }}">

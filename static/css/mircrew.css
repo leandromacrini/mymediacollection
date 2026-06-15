@@ -6,3 +6,8 @@
 #mircrew-cache-status {
   max-width: 560px;
 }
+
+.mircrew-detail-loading,
+.mircrew-detail-content .list-group-item {
+  font-size: .92rem;
+}

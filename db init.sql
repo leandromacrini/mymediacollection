@@ -266,6 +266,23 @@ VALUES
 ('Movie A', 'https://ddunlimited.net/viewtopic.php?f=1988&t=3941486', 'movie', 'film', NULL, TRUE)
 ON CONFLICT (url) DO NOTHING;
 
+-- MirCrew list sources
+CREATE TABLE IF NOT EXISTS mircrew_sources (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    category_label TEXT,
+    category_value TEXT,
+    enabled BOOLEAN DEFAULT TRUE,
+    last_count INTEGER DEFAULT 0,
+    last_checked TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mircrew_sources_enabled
+ON mircrew_sources(enabled);
+
 -- ===============================================
 -- Telegram
 -- ===============================================

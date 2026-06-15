@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, render_template
 
+from api import ddunlimited_browser
 from app.extensions import db
 from core import dashboard_core
 from api import radarr_api, sonarr_api
@@ -61,6 +62,7 @@ def dashboard_data():
             "plex_db": wanted_sources.get("plex db", 0),
             "text": wanted_sources.get("text", 0)
         },
+        "ddunlimited_browser": ddunlimited_browser.get_browser_status(db),
         "last_imports": [serialize_media(item) for item in data["last_imports"]],
         "wanted_movies": [{"title": item.title, "year": item.year} for item in data["wanted_movies"]],
         "wanted_series": [{"title": item.title, "year": item.year} for item in data["wanted_series"]]

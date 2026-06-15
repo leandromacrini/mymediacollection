@@ -17,25 +17,31 @@ services:
     restart: unless-stopped
     networks:
       - bolognanerd_network
+    # Config runtime centralizzata in .env.
     env_file:
       - .env
     ports:
       - "5000:5000"
-      - "5678:5678"
     volumes:
+      # Mount del workspace per sviluppo rapido e modifiche live nel container.
       - ./:/app
+      # Licenza FileBot host -> container. Il path host arriva da FILEBOT_LICENSE_DIR.
       - type: bind
         source: ${FILEBOT_LICENSE_DIR}
         target: /licenses
         read_only: true
+      # Dati applicativi persistenti: cache, export e file runtime MMC.
       - type: volume
         source: bolognanerd_nas_data_nfs
         target: /data
         volume:
           subpath: Configurazioni/my-media-collection/data
+      # Upload persistenti condivisi via volume NFS.
       - type: volume
         source: bolognanerd_nas_data_nfs
         target: /uploads
         volume:
           subpath: Configurazioni/my-media-collection/uploads
-    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "-m", "flask", "--app", "main.py", "--debug", "run", "--host", "0.0.0.0", "--port", "5000"]
+    # Un solo worker: refresh/job state vive in memoria processo e non e condiviso tra worker Gunicorn.
+    # I thread restano sufficienti per UI + job background senza falsi "refresh finito".
+    command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "180", "main:app"]

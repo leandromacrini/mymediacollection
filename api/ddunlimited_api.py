@@ -14,6 +14,7 @@ import requests
 from bs4 import BeautifulSoup
 from rapidfuzz import fuzz, process
 
+from api import ddunlimited_browser
 from core import db_core
 
 # ===== CONFIG =====
@@ -68,6 +69,10 @@ class DDUItem:
     year: int | None = None
     source_name: str | None = None
     status: str | None = None
+
+
+class DDUInvalidSourcePage(RuntimeError):
+    pass
 
 
 def _get_config(db: db_core.MediaDB | None = None) -> dict:
@@ -125,6 +130,14 @@ def ddu_test_connection(
     username: str | None = None,
     password: str | None = None
 ) -> tuple[bool, str]:
+    if db is not None:
+        status = ddunlimited_browser.get_browser_status(db)
+        if status.get("state") == "authenticated":
+            return True, "DDUnlimited browser session attiva."
+        if status.get("state") == "auth_required":
+            return False, "DDUnlimited richiede login nel browser remoto."
+        error = status.get("error") or status.get("label") or "Browser DDU non disponibile."
+        return False, str(error)
     if url is None:
         cfg = _get_config(db)
         url = cfg["base_url"]
@@ -154,10 +167,22 @@ def ddu_test_connection(
         return False, f"DDUnlimited error: {exc}"
 
 
-def _fetch_html(url: str, session: requests.Session) -> str:
+def _fetch_html(url: str, session: requests.Session | None = None, db: db_core.MediaDB | None = None) -> str:
+    if db is not None:
+        return ddunlimited_browser.fetch_html(url, db=db)
+    if session is None:
+        raise RuntimeError("Missing HTTP session for DDU fetch.")
     r = session.get(url, timeout=REQUEST_TIMEOUT)
     r.raise_for_status()
     return r.text
+
+
+def _validate_list_page_html(html: str, source_name: str | None = None) -> None:
+    soup = BeautifulSoup(html, "html.parser")
+    title = (soup.title.get_text(" ", strip=True) if soup.title else "").strip()
+    if title.lower().startswith("informazione"):
+        label = source_name or "DDUnlimited source"
+        raise DDUInvalidSourcePage(f"{label}: pagina non valida o obsoleta (DDU 'Informazione').")
 
 
 def _extract_topic_id(url: str) -> str | None:
@@ -332,7 +357,7 @@ def start_refresh(db: db_core.MediaDB | None = None) -> dict:
         })
 
     def _run():
-        session, cfg = _build_session(db)
+        cfg = _get_config(db)
         merged: dict[str, DDUItem] = {}
         sources = ddu_get_sources(db)
         with _REFRESH_LOCK:
@@ -346,8 +371,16 @@ def start_refresh(db: db_core.MediaDB | None = None) -> dict:
             with _REFRESH_LOCK:
                 _REFRESH_STATE["current_source"] = source.name
             try:
-                html = _fetch_html(source.url, session)
-            except Exception:
+                html = _fetch_html(source.url, db=db)
+                _validate_list_page_html(html, source.name)
+            except ddunlimited_browser.DDUBrowserAuthRequired as exc:
+                with _REFRESH_LOCK:
+                    _REFRESH_STATE["error"] = str(exc)
+                    _REFRESH_STATE["running"] = False
+                return
+            except Exception as exc:
+                with _REFRESH_LOCK:
+                    _REFRESH_STATE["error"] = f"{source.name}: {exc}"
                 with _REFRESH_LOCK:
                     _REFRESH_STATE["processed_sources"] += 1
                 continue
@@ -539,19 +572,23 @@ def _parse_ed2k_link(link: str) -> dict:
     # ed2k://|file|NAME|SIZE|HASH|/
     name = link
     size = None
+    ed2k_hash = None
     parts = link.split("|")
     if len(parts) >= 5 and parts[1] == "file":
         name = unquote(parts[2]) if parts[2] else name
         size = parts[3] or None
+        ed2k_hash = parts[4] or None
     else:
-        match = re.search(r"ed2k://\\|file\\|(.*?)\\|(\\d+)\\|", link, flags=re.IGNORECASE)
+        match = re.search(r"ed2k://\\|file\\|(.*?)\\|(\\d+)\\|([0-9A-Fa-f]+)\\|", link, flags=re.IGNORECASE)
         if match:
             name = unquote(match.group(1)) if match.group(1) else name
             size = match.group(2) or None
+            ed2k_hash = match.group(3) or None
     return {
         "link": link,
         "name": name,
-        "size": size
+        "size": size,
+        "hash": ed2k_hash
     }
 
 
@@ -643,8 +680,9 @@ def _load_cache_from_disk() -> None:
 
 
 def get_release_ed2k(detail_url: str, db: db_core.MediaDB | None = None) -> dict:
-    session, cfg = _build_session(db)
-    html = _fetch_html(detail_url, session)
+    cfg = _get_config(db)
+    html = _fetch_html(detail_url, db=db)
+    _validate_list_page_html(html, "DDUnlimited release")
     ed2k_links = extract_ed2k_links(html)
     parsed_links = [_parse_ed2k_link(link) for link in ed2k_links]
     stats = _get_ed2k_stats(parsed_links)

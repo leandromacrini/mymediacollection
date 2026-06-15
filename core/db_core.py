@@ -578,3 +578,96 @@ class MediaDB:
             """, (last_count, source_id))
             self.conn.commit()
             return cur.rowcount > 0
+
+    def get_mircrew_sources(self, include_disabled: bool = False) -> list[dict]:
+        query = """
+            SELECT
+                id, name, url, category_label, category_value,
+                enabled, last_count, last_checked, created_at, updated_at
+            FROM mircrew_sources
+        """
+        if not include_disabled:
+            query += " WHERE enabled = TRUE"
+        query += " ORDER BY name"
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(query)
+            return cur.fetchall()
+
+    def add_mircrew_source(self, data: dict) -> int | None:
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO mircrew_sources
+                    (name, url, category_label, category_value, enabled)
+                VALUES (%s, %s, %s, %s, %s)
+                RETURNING id
+            """, (
+                data.get("name"),
+                data.get("url"),
+                data.get("category_label"),
+                data.get("category_value"),
+                data.get("enabled", True),
+            ))
+            row = cur.fetchone()
+            self.conn.commit()
+            return row[0] if row else None
+
+    def update_mircrew_source(self, source_id: int, data: dict) -> bool:
+        allowed = ["name", "url", "category_label", "category_value", "enabled"]
+        fields = []
+        values = []
+        for key in allowed:
+            if key in data:
+                fields.append(f"{key}=%s")
+                values.append(data[key])
+        if not fields:
+            return False
+        fields.append("updated_at=now()")
+        values.append(source_id)
+        with self.conn.cursor() as cur:
+            cur.execute(
+                f"UPDATE mircrew_sources SET {', '.join(fields)} WHERE id=%s",
+                values,
+            )
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def delete_mircrew_source(self, source_id: int) -> bool:
+        with self.conn.cursor() as cur:
+            cur.execute("DELETE FROM mircrew_sources WHERE id=%s", (source_id,))
+            self.conn.commit()
+            return cur.rowcount > 0
+
+    def get_mircrew_source(self, source_id: int) -> dict | None:
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    id, name, url, category_label, category_value,
+                    enabled, last_count, last_checked, created_at, updated_at
+                FROM mircrew_sources
+                WHERE id = %s
+            """, (source_id,))
+            return cur.fetchone()
+
+    def get_mircrew_source_by_url(self, url: str) -> dict | None:
+        if not url:
+            return None
+        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("""
+                SELECT
+                    id, name, url, category_label, category_value,
+                    enabled, last_count, last_checked, created_at, updated_at
+                FROM mircrew_sources
+                WHERE url = %s
+                LIMIT 1
+            """, (url,))
+            return cur.fetchone()
+
+    def set_mircrew_source_stats(self, source_id: int, last_count: int) -> bool:
+        with self.conn.cursor() as cur:
+            cur.execute("""
+                UPDATE mircrew_sources
+                SET last_count=%s, last_checked=now(), updated_at=now()
+                WHERE id=%s
+            """, (last_count, source_id))
+            self.conn.commit()
+            return cur.rowcount > 0

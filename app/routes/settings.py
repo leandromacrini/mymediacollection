@@ -5,6 +5,7 @@ from flask import Blueprint, flash, jsonify, redirect, render_template, request,
 from urllib.parse import urljoin
 
 from api import ddunlimited_api
+from api import ddunlimited_browser
 from api import emule_api
 from api import radarr_api
 from api import sonarr_api
@@ -53,14 +54,13 @@ def _test_animeworld(cfg: dict[str, str]) -> tuple[bool, str]:
 
 
 def _test_ddunlimited(cfg: dict[str, str]) -> tuple[bool, str]:
-    url = (cfg.get("ddunlimited_url") or "").rstrip("/")
-    username = cfg.get("ddunlimited_username") or ""
-    password = cfg.get("ddunlimited_password") or ""
-    return ddunlimited_api.ddu_test_connection(
-        url=url,
-        username=username,
-        password=password
-    )
+    status = ddunlimited_browser.get_browser_status(db)
+    if status.get("state") == "authenticated":
+        return True, "DDUnlimited browser session attiva."
+    if status.get("state") == "auth_required":
+        return False, "DDUnlimited richiede login nel browser remoto."
+    error = status.get("error") or status.get("label") or "Browser DDU non disponibile."
+    return False, str(error)
 
 
 def _test_emule(cfg: dict[str, str]) -> tuple[bool, str]:

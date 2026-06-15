@@ -1,10 +1,19 @@
+from dataclasses import asdict
+
 from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for, flash
 
 from api import ddunlimited_api as ddu_api
+from api import ddunlimited_browser
 from app.extensions import db
 from app.utils import build_ddunlimited_media
 
 bp = Blueprint("ddunlimited", __name__)
+
+
+def _item_to_dict(item):
+    payload = asdict(item)
+    payload["topic_id"] = str(payload["topic_id"]) if payload.get("topic_id") is not None else None
+    return payload
 
 
 @bp.route("/ddunlimited", methods=["GET", "POST"])
@@ -12,6 +21,7 @@ def ddunlimited_view():
     search_results = []
     query = request.args.get("q")
     cache_status = ddu_api.get_cache_status()
+    browser_status = ddunlimited_browser.get_browser_status(db)
 
     if request.method == "POST":
         query = request.form.get("search_query")
@@ -41,7 +51,8 @@ def ddunlimited_view():
         "ddunlimited.html",
         results=search_results,
         query=query,
-        cache_status=cache_status
+        cache_status=cache_status,
+        browser_status=browser_status
     )
 
 
@@ -125,9 +136,10 @@ def ddunlimited_sources_test(source_id: int):
     source = db.get_ddunlimited_source(source_id)
     if not source:
         return jsonify({"ok": False, "error": "not_found"}), 404
-    session, cfg = ddu_api._build_session(db)
+    cfg = ddu_api._get_config(db)
     try:
-        html = ddu_api._fetch_html(source["url"], session)
+        html = ddu_api._fetch_html(source["url"], db=db)
+        ddu_api._validate_list_page_html(html, source["name"])
         source_obj = ddu_api.DDUListSource(
             name=source["name"],
             url=source["url"],
@@ -140,6 +152,10 @@ def ddunlimited_sources_test(source_id: int):
         count = len(items)
         db.set_ddunlimited_source_stats(source_id, count)
         return jsonify({"ok": True, "count": count})
+    except ddunlimited_browser.DDUBrowserAuthRequired as exc:
+        return jsonify({"ok": False, "error": "auth_required", "message": str(exc)}), 409
+    except ddu_api.DDUInvalidSourcePage as exc:
+        return jsonify({"ok": False, "error": "invalid_source_page", "message": str(exc)}), 422
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 500
 
@@ -149,13 +165,94 @@ def ddunlimited_ed2k_api():
     detail_url = (request.args.get("url") or "").strip()
     if not detail_url or "ddunlimited.net" not in detail_url:
         abort(400)
-    detail = ddu_api.get_release_ed2k(detail_url, db)
-    return jsonify(detail)
+    try:
+        detail = ddu_api.get_release_ed2k(detail_url, db)
+        return jsonify(detail)
+    except ddunlimited_browser.DDUBrowserAuthRequired as exc:
+        return jsonify({"ok": False, "error": "auth_required", "message": str(exc)}), 409
+    except ddu_api.DDUInvalidSourcePage as exc:
+        return jsonify({"ok": False, "error": "invalid_source_page", "message": str(exc)}), 422
+
+
+@bp.route("/api/ddunlimited/search", methods=["GET"])
+def ddunlimited_search_api():
+    query = (request.args.get("q") or "").strip()
+    limit = request.args.get("limit", type=int) or 50
+    limit = max(1, min(limit, 500))
+    if not query:
+        return jsonify({"ok": False, "error": "missing_query", "message": "Parametro q mancante."}), 400
+
+    wanted_items = db.get_wanted_items(limit=None)
+    wanted_by_ddun = {
+        item.external_ids.get("ddunlimited")
+        for item in wanted_items
+        if item.external_ids.get("ddunlimited")
+    }
+
+    results = ddu_api.search_cache(query, max_results=limit)
+    items = []
+    for item in results:
+        if item.topic_id and str(item.topic_id) in wanted_by_ddun:
+            item.status = "wanted"
+        elif item.status is None:
+            item.status = "new"
+        items.append(_item_to_dict(item))
+    return jsonify({
+        "ok": True,
+        "query": query,
+        "count": len(items),
+        "items": items,
+    })
+
+
+@bp.route("/api/ddunlimited/release", methods=["GET"])
+def ddunlimited_release_api():
+    detail_url = (request.args.get("url") or "").strip()
+    topic_id = (request.args.get("topic_id") or "").strip()
+    if not detail_url and not topic_id:
+        return jsonify({
+            "ok": False,
+            "error": "missing_identifier",
+            "message": "Serve url o topic_id."
+        }), 400
+
+    if not detail_url:
+        cfg = ddu_api._get_config(db)
+        detail_url = f"{cfg['base_url']}/viewtopic.php?t={topic_id}"
+
+    try:
+        detail = ddu_api.get_release_ed2k(detail_url, db)
+        detail["ok"] = True
+        detail["detail_url"] = detail_url
+        detail["topic_id"] = topic_id or ddu_api._extract_topic_id(detail_url)
+        return jsonify(detail)
+    except ddunlimited_browser.DDUBrowserAuthRequired as exc:
+        return jsonify({"ok": False, "error": "auth_required", "message": str(exc)}), 409
+    except ddu_api.DDUInvalidSourcePage as exc:
+        return jsonify({"ok": False, "error": "invalid_source_page", "message": str(exc)}), 422
+
+
+@bp.route("/api/ddunlimited/health", methods=["GET"])
+def ddunlimited_health_api():
+    browser_status = ddunlimited_browser.get_browser_status(db)
+    cache_status = ddu_api.get_cache_status()
+    refresh_status = ddu_api.get_refresh_status()
+    return jsonify({
+        "ok": bool(browser_status.get("ok")),
+        "browser": browser_status,
+        "cache": cache_status,
+        "refresh": refresh_status,
+    })
 
 
 @bp.route("/api/ddunlimited/cache/status", methods=["GET"])
 def ddunlimited_cache_status():
     return jsonify(ddu_api.get_cache_status())
+
+
+@bp.route("/api/ddunlimited/browser/status", methods=["GET"])
+def ddunlimited_browser_status():
+    return jsonify(ddunlimited_browser.get_browser_status(db))
 
 
 @bp.route("/api/ddunlimited/cache/refresh", methods=["POST"])

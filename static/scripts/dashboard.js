@@ -6,6 +6,34 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
+  const setDduBrowserStatus = (status) => {
+    const labelEl = document.getElementById("dashboard-ddu-browser-label");
+    const stateEl = document.getElementById("dashboard-ddu-browser-state");
+    const loginEl = document.getElementById("dashboard-ddu-browser-login");
+    if (labelEl) {
+      labelEl.textContent = status?.label || "Non disponibile";
+    }
+    if (stateEl) {
+      stateEl.textContent = status?.label || "Non disponibile";
+      stateEl.className = "badge";
+      if (status?.state === "authenticated") {
+        stateEl.classList.add("bg-success-subtle", "text-success");
+      } else if (status?.state === "auth_required" || status?.state === "session_unknown") {
+        stateEl.classList.add("bg-warning-subtle", "text-warning");
+      } else {
+        stateEl.classList.add("bg-danger-subtle", "text-danger");
+      }
+    }
+    if (loginEl) {
+      if (status?.login_url) {
+        loginEl.href = status.login_url;
+        loginEl.classList.remove("d-none");
+      } else {
+        loginEl.classList.add("d-none");
+      }
+    }
+  };
+
   const formatDate = (value) => {
     if (!value) {
       return "-";
@@ -68,6 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const radarr = data.radarr_info || {};
       const sonarr = data.sonarr_info || {};
       const wantedSources = data.wanted_sources || {};
+      const dduBrowser = data.ddunlimited_browser || {};
 
       setText("dashboard-total", counts.total ?? "0");
       setText("dashboard-present", counts.present ?? "0");
@@ -85,6 +114,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setText("dashboard-wanted-ddu", wantedSources.ddunlimited ?? "0");
       setText("dashboard-wanted-plex", wantedSources.plex_db ?? "0");
       setText("dashboard-wanted-text", wantedSources.text ?? "0");
+      setDduBrowserStatus(dduBrowser);
 
       renderLastImports(data.last_imports || []);
       renderWantedList("dashboard-wanted-movies", data.wanted_movies || [], "No missing movies");
@@ -112,6 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setText("dashboard-wanted-ddu", "0");
       setText("dashboard-wanted-plex", "0");
       setText("dashboard-wanted-text", "0");
+      setDduBrowserStatus({ state: "browser_unavailable", label: "Browser offline" });
 
       const loading = document.getElementById("dashboard-loading");
       if (loading) {
