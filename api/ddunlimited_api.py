@@ -1,5 +1,6 @@
 import html as html_lib
 import json
+import logging
 import os
 import re
 import unicodedata
@@ -8,7 +9,7 @@ from dataclasses import asdict
 from datetime import datetime, timezone
 from threading import Event, RLock, Thread
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlparse, parse_qs
+from urllib.parse import urljoin, urlparse, parse_qs, urlunparse
 
 import requests
 from bs4 import BeautifulSoup
@@ -17,12 +18,14 @@ from rapidfuzz import fuzz, process
 from api import ddunlimited_browser
 from core import db_core
 
+logger = logging.getLogger(__name__)
+
 # ===== CONFIG =====
 DDU_BASE_URL = "https://ddunlimited.net"
 REQUEST_TIMEOUT = 10
 # ==================
 
-_CACHE_FILE = os.path.join("data", "ddunlimited_cache.json")
+_CACHE_FILE = os.path.join(os.path.abspath((os.environ.get("MMC_CACHE_DIR") or "/data/cache").strip()), "ddunlimited_cache.json")
 _CACHE_LOCK = RLock()
 _CACHE = {
     "items": {},
@@ -67,12 +70,20 @@ class DDUItem:
     media_type: str | None = None
     category: str | None = None
     year: int | None = None
+    created_at: str | None = None
     source_name: str | None = None
     status: str | None = None
 
 
 class DDUInvalidSourcePage(RuntimeError):
     pass
+
+
+def normalize_detail_url(url: str) -> str:
+    if not url:
+        return ""
+    parsed = urlparse(url.strip())
+    return urlunparse((parsed.scheme, parsed.netloc, parsed.path, parsed.params, parsed.query, ""))
 
 
 def _get_config(db: db_core.MediaDB | None = None) -> dict:
@@ -180,9 +191,22 @@ def _fetch_html(url: str, session: requests.Session | None = None, db: db_core.M
 def _validate_list_page_html(html: str, source_name: str | None = None) -> None:
     soup = BeautifulSoup(html, "html.parser")
     title = (soup.title.get_text(" ", strip=True) if soup.title else "").strip()
+    title_lower = title.lower()
+    body_text = soup.get_text(" ", strip=True).lower()
+    label = source_name or "DDUnlimited source"
     if title.lower().startswith("informazione"):
-        label = source_name or "DDUnlimited source"
         raise DDUInvalidSourcePage(f"{label}: pagina non valida o obsoleta (DDU 'Informazione').")
+    challenge_markers = (
+        "just a moment",
+        "enable javascript and cookies to continue",
+        "challenge-platform",
+        "cf-browser-verification",
+        "attention required",
+        "checking if the site connection is secure",
+        "cloudflare",
+    )
+    if any(marker in title_lower or marker in body_text for marker in challenge_markers):
+        raise DDUInvalidSourcePage(f"{label}: accesso bloccato da Cloudflare o challenge page.")
 
 
 def _extract_topic_id(url: str) -> str | None:
@@ -254,6 +278,33 @@ def _parse_quality(text: str | None) -> str | None:
     return None
 
 
+def _extract_created_at(html: str) -> str | None:
+    soup = BeautifulSoup(html, "html.parser")
+    candidate_texts: list[str] = []
+    for selector in (".author", ".postprofile", ".postbody", "body"):
+        for node in soup.select(selector):
+            text = node.get_text(" ", strip=True)
+            if text:
+                candidate_texts.append(text)
+        if candidate_texts:
+            break
+    patterns = (
+        "%d/%m/%Y, %H:%M",
+        "%d/%m/%Y %H:%M",
+    )
+    for text in candidate_texts:
+        match = re.search(r"(\d{2}/\d{2}/\d{4}\s*,?\s*\d{2}:\d{2})", text)
+        if not match:
+            continue
+        raw = " ".join(match.group(1).replace(",", ", ").split()).replace(" ,", ",")
+        for fmt in patterns:
+            try:
+                return datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc).isoformat()
+            except ValueError:
+                continue
+    return None
+
+
 def parse_list_page(html: str, source: DDUListSource, base_url: str) -> list[DDUItem]:
     soup = BeautifulSoup(html, "html.parser")
     items: list[DDUItem] = []
@@ -285,7 +336,7 @@ def parse_list_page(html: str, source: DDUListSource, base_url: str) -> list[DDU
         if title.lower().startswith("lista"):
             continue
 
-        detail_url = urljoin(base_url + "/", href)
+        detail_url = normalize_detail_url(urljoin(base_url + "/", href))
         topic_id = _extract_topic_id(detail_url)
         if topic_id and topic_id in seen_topics:
             continue
@@ -336,6 +387,92 @@ def _merge_item(existing: DDUItem, incoming: DDUItem) -> DDUItem:
             existing.source_name = incoming.source_name
     return existing
 
+
+def _copy_cache_items() -> dict[str, DDUItem]:
+    _load_cache_from_disk()
+    with _CACHE_LOCK:
+        return dict(_CACHE["items"])
+
+
+def _save_cache_snapshot(items: dict[str, DDUItem], sources_count: int | None = None) -> None:
+    with _CACHE_LOCK:
+        _CACHE["items"] = dict(items)
+        if sources_count is not None:
+            _CACHE["sources"] = int(sources_count)
+        _CACHE["updated_at"] = datetime.now(timezone.utc)
+        _save_cache_to_disk()
+    logger.info("ddu refresh checkpoint sources=%s items=%s", sources_count, len(items))
+
+
+def _source_names_set(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    return {part.strip() for part in str(value).split(",") if part.strip()}
+
+
+def enrich_sources_with_cache_counts(sources: list[dict]) -> list[dict]:
+    if not sources:
+        return []
+    _load_cache_from_disk()
+    with _CACHE_LOCK:
+        cached_items = list(_CACHE["items"].values())
+    counts_by_source: dict[str, int] = {}
+    for item in cached_items:
+        for source_name in _source_names_set(item.source_name):
+            counts_by_source[source_name] = counts_by_source.get(source_name, 0) + 1
+    enriched = []
+    for source in sources:
+        row = dict(source)
+        row["last_count"] = counts_by_source.get(str(row.get("name") or "").strip(), 0)
+        enriched.append(row)
+    return enriched
+
+
+def refresh_source_cache(source_row: dict, db: db_core.MediaDB | None = None) -> dict:
+    if db is None:
+        return {"ok": False, "error": "missing_db"}
+    logger.info("ddu source refresh start id=%s name=%s url=%s", source_row.get("id"), source_row.get("name"), source_row.get("url"))
+    cfg = _get_config(db)
+    html = _fetch_html(source_row["url"], db=db)
+    _validate_list_page_html(html, source_row.get("name"))
+    source_obj = DDUListSource(
+        name=source_row["name"],
+        url=source_row["url"],
+        media_type=source_row["media_type"],
+        category=source_row.get("category"),
+        quality=source_row.get("quality"),
+        language=source_row.get("language"),
+    )
+    items = parse_list_page(html, source_obj, cfg["base_url"])
+    cached = _copy_cache_items()
+    source_name = source_obj.name
+    filtered_cache = {
+        key: item for key, item in cached.items()
+        if source_name not in _source_names_set(item.source_name)
+    }
+    source_count = 0
+    for item in items:
+        key = normalize_detail_url(item.detail_url) or (item.topic_id or "")
+        if not key:
+            continue
+        existing = filtered_cache.get(key)
+        if existing:
+            filtered_cache[key] = _merge_item(existing, item)
+        else:
+            filtered_cache[key] = item
+        source_count += 1
+    sources = ddu_get_sources(db)
+    _save_cache_snapshot(filtered_cache, len(sources))
+    db.set_ddunlimited_source_stats(int(source_row["id"]), source_count)
+    logger.info(
+        "ddu source refresh done id=%s name=%s source_count=%s cache_items=%s",
+        source_row.get("id"),
+        source_row.get("name"),
+        source_count,
+        len(filtered_cache),
+    )
+    return {"ok": True, "count": source_count, "items_count": len(filtered_cache)}
+
 def start_refresh(db: db_core.MediaDB | None = None) -> dict:
     if db is None:
         return {"ok": False, "error": "missing_db"}
@@ -358,35 +495,49 @@ def start_refresh(db: db_core.MediaDB | None = None) -> dict:
 
     def _run():
         cfg = _get_config(db)
-        merged: dict[str, DDUItem] = {}
         sources = ddu_get_sources(db)
+        merged: dict[str, DDUItem] = {}
+        logger.info("ddu refresh start sources=%s base_url=%s", len(sources), cfg["base_url"])
         with _REFRESH_LOCK:
             _REFRESH_STATE["total_sources"] = len(sources)
         for source in sources:
             if _CANCEL_EVENT.is_set():
+                _save_cache_snapshot(merged, len(sources))
+                logger.warning("ddu refresh cancelled processed=%s/%s items=%s", _REFRESH_STATE["processed_sources"], len(sources), len(merged))
                 with _REFRESH_LOCK:
                     _REFRESH_STATE["cancelled"] = True
                     _REFRESH_STATE["running"] = False
+                    _REFRESH_STATE["updated_at"] = _CACHE["updated_at"]
+                    _REFRESH_STATE["items_count"] = len(merged)
                 return
             with _REFRESH_LOCK:
                 _REFRESH_STATE["current_source"] = source.name
+            logger.info("ddu refresh source start name=%s url=%s", source.name, source.url)
             try:
                 html = _fetch_html(source.url, db=db)
                 _validate_list_page_html(html, source.name)
             except ddunlimited_browser.DDUBrowserAuthRequired as exc:
+                _save_cache_snapshot(merged, len(sources))
+                logger.error("ddu refresh auth required source=%s error=%s", source.name, exc)
                 with _REFRESH_LOCK:
                     _REFRESH_STATE["error"] = str(exc)
                     _REFRESH_STATE["running"] = False
+                    _REFRESH_STATE["updated_at"] = _CACHE["updated_at"]
+                    _REFRESH_STATE["items_count"] = len(merged)
                 return
             except Exception as exc:
+                _save_cache_snapshot(merged, len(sources))
+                logger.exception("ddu refresh source failed name=%s url=%s", source.name, source.url)
                 with _REFRESH_LOCK:
                     _REFRESH_STATE["error"] = f"{source.name}: {exc}"
-                with _REFRESH_LOCK:
-                    _REFRESH_STATE["processed_sources"] += 1
-                continue
+                    _REFRESH_STATE["running"] = False
+                    _REFRESH_STATE["updated_at"] = _CACHE["updated_at"]
+                    _REFRESH_STATE["items_count"] = len(merged)
+                return
             items = parse_list_page(html, source, cfg["base_url"])
+            logger.info("ddu refresh source parsed name=%s releases=%s", source.name, len(items))
             for item in items:
-                key = item.detail_url or (item.topic_id or "")
+                key = normalize_detail_url(item.detail_url) or (item.topic_id or "")
                 if not key:
                     continue
                 existing = merged.get(key)
@@ -394,19 +545,29 @@ def start_refresh(db: db_core.MediaDB | None = None) -> dict:
                     merged[key] = item
                 else:
                     merged[key] = _merge_item(existing, item)
+            _save_cache_snapshot(merged, len(sources))
             with _REFRESH_LOCK:
                 _REFRESH_STATE["processed_sources"] += 1
                 _REFRESH_STATE["items_count"] = len(merged)
+                _REFRESH_STATE["updated_at"] = _CACHE["updated_at"]
+            logger.info(
+                "ddu refresh source done name=%s processed=%s/%s merged_items=%s",
+                source.name,
+                _REFRESH_STATE["processed_sources"],
+                len(sources),
+                len(merged),
+            )
         if _CANCEL_EVENT.is_set():
+            _save_cache_snapshot(merged, len(sources))
+            logger.warning("ddu refresh cancelled at end processed=%s/%s items=%s", _REFRESH_STATE["processed_sources"], len(sources), len(merged))
             with _REFRESH_LOCK:
                 _REFRESH_STATE["cancelled"] = True
                 _REFRESH_STATE["running"] = False
+                _REFRESH_STATE["updated_at"] = _CACHE["updated_at"]
+                _REFRESH_STATE["items_count"] = len(merged)
             return
-        with _CACHE_LOCK:
-            _CACHE["items"] = merged
-            _CACHE["sources"] = len(sources)
-            _CACHE["updated_at"] = datetime.now(timezone.utc)
-            _save_cache_to_disk()
+        _save_cache_snapshot(merged, len(sources))
+        logger.info("ddu refresh done processed=%s/%s items=%s", len(sources), len(sources), len(merged))
         with _REFRESH_LOCK:
             _REFRESH_STATE["running"] = False
             _REFRESH_STATE["updated_at"] = _CACHE["updated_at"]
@@ -419,6 +580,7 @@ def start_refresh(db: db_core.MediaDB | None = None) -> dict:
 
 def cancel_refresh() -> dict:
     _CANCEL_EVENT.set()
+    logger.warning("ddu refresh cancel requested")
     with _REFRESH_LOCK:
         if _REFRESH_STATE["running"]:
             _REFRESH_STATE["cancelled"] = True
@@ -650,12 +812,12 @@ def _load_cache_from_disk() -> None:
             return
     if not os.path.exists(_CACHE_FILE):
         return
-    print(f"DDU cache load start: {_CACHE_FILE}")
+    logger.info("ddu cache load start path=%s", _CACHE_FILE)
     try:
         with open(_CACHE_FILE, "r", encoding="utf-8") as f:
             payload = json.load(f)
     except (OSError, json.JSONDecodeError):
-        print("DDU cache load failed.")
+        logger.exception("ddu cache load failed path=%s", _CACHE_FILE)
         return
     items = {}
     for raw in payload.get("items", []):
@@ -663,7 +825,7 @@ def _load_cache_from_disk() -> None:
             item = DDUItem(**raw)
         except TypeError:
             continue
-        key = item.detail_url or (item.topic_id or "")
+        key = normalize_detail_url(item.detail_url) or (item.topic_id or "")
         if key:
             items[key] = item
     updated_at = payload.get("updated_at")
@@ -676,13 +838,15 @@ def _load_cache_from_disk() -> None:
             _CACHE["items"] = items
             _CACHE["sources"] = payload.get("sources", 0)
             _CACHE["updated_at"] = updated_dt
-    print(f"DDU cache load done: {len(items)} items")
+    logger.info("ddu cache load done path=%s items=%s", _CACHE_FILE, len(items))
 
 
 def get_release_ed2k(detail_url: str, db: db_core.MediaDB | None = None) -> dict:
     cfg = _get_config(db)
+    detail_url = normalize_detail_url(detail_url)
     html = _fetch_html(detail_url, db=db)
     _validate_list_page_html(html, "DDUnlimited release")
+    created_at = _extract_created_at(html)
     ed2k_links = extract_ed2k_links(html)
     parsed_links = [_parse_ed2k_link(link) for link in ed2k_links]
     stats = _get_ed2k_stats(parsed_links)
@@ -690,5 +854,6 @@ def get_release_ed2k(detail_url: str, db: db_core.MediaDB | None = None) -> dict
         "ed2k_links": ed2k_links,
         "ed2k_items": parsed_links,
         "ed2k_stats": stats,
+        "created_at": created_at,
         "base_url": cfg["base_url"]
     }

@@ -1,5 +1,6 @@
 from flask import Blueprint, abort, jsonify, flash, redirect, render_template, request, url_for
 
+from api import extended_search_api
 from api import mircrew_api
 from api import mircrew_browser
 from app.extensions import db
@@ -116,7 +117,8 @@ def mircrew_health():
 
 @bp.route("/api/mircrew/sources", methods=["GET"])
 def mircrew_sources_list():
-    return jsonify({"items": db.get_mircrew_sources(include_disabled=True)})
+    sources = db.get_mircrew_sources(include_disabled=True)
+    return jsonify({"items": mircrew_api.enrich_sources_with_cache_counts(sources)})
 
 
 @bp.route("/api/mircrew/sources", methods=["POST"])
@@ -207,6 +209,7 @@ def mircrew_search_api():
     items = []
     for row in rows:
         payload = dict(row)
+        payload["created_at"] = mircrew_api.row_created_at(row)
         payload["status"] = "wanted" if str(row.get("release_id") or "") in wanted_ids else "new"
         items.append(payload)
     return jsonify({"ok": True, "query": query, "count": len(items), "items": items})
@@ -226,3 +229,28 @@ def mircrew_release_api():
         return jsonify({"ok": False, "error": "invalid_source_page", "message": str(exc)}), 422
     except ValueError:
         return jsonify({"ok": False, "error": "release_not_found"}), 404
+
+
+def _extended_params() -> dict:
+    return {
+        "q": (request.args.get("q") or "").strip() or None,
+        "tmdbid": (request.args.get("tmdbid") or "").strip() or None,
+        "imdbid": (request.args.get("imdbid") or "").strip() or None,
+        "tvdbid": (request.args.get("tvdbid") or "").strip() or None,
+        "season": (request.args.get("season") or "").strip() or None,
+        "ep": (request.args.get("ep") or "").strip() or None,
+        "year": (request.args.get("year") or "").strip() or None,
+        "categories": (request.args.get("categories") or "").strip() or None,
+        "limit": request.args.get("limit", type=int) or 50,
+        "offset": request.args.get("offset", type=int) or 0,
+    }
+
+
+@bp.route("/api/mircrew/movie-extended-search", methods=["GET"])
+def mircrew_movie_extended_search():
+    return jsonify(extended_search_api.mircrew_extended_search("movie", _extended_params()))
+
+
+@bp.route("/api/mircrew/tv-extended-search", methods=["GET"])
+def mircrew_tv_extended_search():
+    return jsonify(extended_search_api.mircrew_extended_search("tv", _extended_params()))

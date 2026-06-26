@@ -4,6 +4,7 @@ from flask import Blueprint, abort, jsonify, redirect, render_template, request,
 
 from api import ddunlimited_api as ddu_api
 from api import ddunlimited_browser
+from api import extended_search_api
 from app.extensions import db
 from app.utils import build_ddunlimited_media
 
@@ -13,6 +14,7 @@ bp = Blueprint("ddunlimited", __name__)
 def _item_to_dict(item):
     payload = asdict(item)
     payload["topic_id"] = str(payload["topic_id"]) if payload.get("topic_id") is not None else None
+    payload.setdefault("created_at", None)
     return payload
 
 
@@ -59,7 +61,7 @@ def ddunlimited_view():
 @bp.route("/ddunlimited/add_wanted", methods=["POST"])
 def add_wanted_ddunlimited():
     search_query = request.form.get("search_query")
-    detail_url = request.form.get("detail_url")
+    detail_url = ddu_api.normalize_detail_url(request.form.get("detail_url") or "")
     topic_id = request.form.get("topic_id")
     if not detail_url or "ddunlimited.net" not in detail_url:
         flash("Link DDU non valido.", "danger")
@@ -80,7 +82,9 @@ def add_wanted_ddunlimited():
 
 @bp.route("/api/ddunlimited/sources", methods=["GET"])
 def ddunlimited_sources_list():
-    sources = db.get_ddunlimited_sources(include_disabled=True)
+    sources = ddu_api.enrich_sources_with_cache_counts(
+        db.get_ddunlimited_sources(include_disabled=True)
+    )
     return jsonify({"items": sources})
 
 
@@ -136,22 +140,9 @@ def ddunlimited_sources_test(source_id: int):
     source = db.get_ddunlimited_source(source_id)
     if not source:
         return jsonify({"ok": False, "error": "not_found"}), 404
-    cfg = ddu_api._get_config(db)
     try:
-        html = ddu_api._fetch_html(source["url"], db=db)
-        ddu_api._validate_list_page_html(html, source["name"])
-        source_obj = ddu_api.DDUListSource(
-            name=source["name"],
-            url=source["url"],
-            media_type=source["media_type"],
-            category=source.get("category"),
-            quality=source.get("quality"),
-            language=source.get("language")
-        )
-        items = ddu_api.parse_list_page(html, source_obj, cfg["base_url"])
-        count = len(items)
-        db.set_ddunlimited_source_stats(source_id, count)
-        return jsonify({"ok": True, "count": count})
+        result = ddu_api.refresh_source_cache(source, db=db)
+        return jsonify(result)
     except ddunlimited_browser.DDUBrowserAuthRequired as exc:
         return jsonify({"ok": False, "error": "auth_required", "message": str(exc)}), 409
     except ddu_api.DDUInvalidSourcePage as exc:
@@ -162,7 +153,7 @@ def ddunlimited_sources_test(source_id: int):
 
 @bp.route("/api/ddunlimited/ed2k", methods=["GET"])
 def ddunlimited_ed2k_api():
-    detail_url = (request.args.get("url") or "").strip()
+    detail_url = ddu_api.normalize_detail_url((request.args.get("url") or "").strip())
     if not detail_url or "ddunlimited.net" not in detail_url:
         abort(400)
     try:
@@ -207,7 +198,7 @@ def ddunlimited_search_api():
 
 @bp.route("/api/ddunlimited/release", methods=["GET"])
 def ddunlimited_release_api():
-    detail_url = (request.args.get("url") or "").strip()
+    detail_url = ddu_api.normalize_detail_url((request.args.get("url") or "").strip())
     topic_id = (request.args.get("topic_id") or "").strip()
     if not detail_url and not topic_id:
         return jsonify({
@@ -218,7 +209,7 @@ def ddunlimited_release_api():
 
     if not detail_url:
         cfg = ddu_api._get_config(db)
-        detail_url = f"{cfg['base_url']}/viewtopic.php?t={topic_id}"
+        detail_url = ddu_api.normalize_detail_url(f"{cfg['base_url']}/viewtopic.php?t={topic_id}")
 
     try:
         detail = ddu_api.get_release_ed2k(detail_url, db)
@@ -270,3 +261,28 @@ def ddunlimited_cache_progress():
 @bp.route("/api/ddunlimited/cache/cancel", methods=["POST"])
 def ddunlimited_cache_cancel():
     return jsonify(ddu_api.cancel_refresh())
+
+
+def _extended_params() -> dict:
+    return {
+        "q": (request.args.get("q") or "").strip() or None,
+        "tmdbid": (request.args.get("tmdbid") or "").strip() or None,
+        "imdbid": (request.args.get("imdbid") or "").strip() or None,
+        "tvdbid": (request.args.get("tvdbid") or "").strip() or None,
+        "season": (request.args.get("season") or "").strip() or None,
+        "ep": (request.args.get("ep") or "").strip() or None,
+        "year": (request.args.get("year") or "").strip() or None,
+        "categories": (request.args.get("categories") or "").strip() or None,
+        "limit": request.args.get("limit", type=int) or 50,
+        "offset": request.args.get("offset", type=int) or 0,
+    }
+
+
+@bp.route("/api/ddunlimited/movie-extended-search", methods=["GET"])
+def ddunlimited_movie_extended_search():
+    return jsonify(extended_search_api.ddunlimited_extended_search("movie", _extended_params(), db))
+
+
+@bp.route("/api/ddunlimited/tv-extended-search", methods=["GET"])
+def ddunlimited_tv_extended_search():
+    return jsonify(extended_search_api.ddunlimited_extended_search("tv", _extended_params(), db))

@@ -5,10 +5,6 @@ networks:
     external: true
     name: bolognanerd_bolognanerd_network
 
-volumes:
-  bolognanerd_nas_data_nfs:
-    external: true
-
 services:
   my-media-collection:
     build: .
@@ -23,25 +19,19 @@ services:
     ports:
       - "5000:5000"
     volumes:
-      # Mount del workspace per sviluppo rapido e modifiche live nel container.
-      - ./:/app
-      # Licenza FileBot host -> container. Il path host arriva da FILEBOT_LICENSE_DIR.
+      # Licenza FileBot persistente sul NAS OMV.
       - type: bind
-        source: ${FILEBOT_LICENSE_DIR}
+        source: ${OMV_NAS_ROOT}/Configurazioni/my-media-collection/licenses
         target: /licenses
         read_only: true
       # Dati applicativi persistenti: cache, export e file runtime MMC.
-      - type: volume
-        source: bolognanerd_nas_data_nfs
+      - type: bind
+        source: ${OMV_NAS_ROOT}/Configurazioni/my-media-collection/data
         target: /data
-        volume:
-          subpath: Configurazioni/my-media-collection/data
-      # Upload persistenti condivisi via volume NFS.
-      - type: volume
-        source: bolognanerd_nas_data_nfs
+      # Upload persistenti MMC.
+      - type: bind
+        source: ${OMV_NAS_ROOT}/Configurazioni/my-media-collection/uploads
         target: /uploads
-        volume:
-          subpath: Configurazioni/my-media-collection/uploads
     # Un solo worker: refresh/job state vive in memoria processo e non e condiviso tra worker Gunicorn.
     # I thread restano sufficienti per UI + job background senza falsi "refresh finito".
     command: ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--threads", "4", "--timeout", "180", "main:app"]

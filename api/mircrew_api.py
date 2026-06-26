@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import re
 from dataclasses import asdict
@@ -11,7 +12,9 @@ from bs4 import BeautifulSoup
 
 from api import mircrew_browser
 
-_DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data"))
+logger = logging.getLogger(__name__)
+
+_DATA_DIR = os.path.abspath((os.environ.get("MMC_CACHE_DIR") or "/data/cache").strip())
 _CACHE_FILE = os.path.join(_DATA_DIR, "mircrew_releases.json")
 _META_FILE = os.path.join(_DATA_DIR, "mircrew_releases.meta.json")
 _CACHE_LOCK = RLock()
@@ -163,6 +166,15 @@ def _to_timestamp(value: float | None) -> str | None:
     if value is None:
         return None
     return datetime.fromtimestamp(value, tz=timezone.utc).isoformat()
+
+
+def row_created_at(row: dict[str, Any] | None) -> str | None:
+    if not isinstance(row, dict):
+        return None
+    raw_ms = _safe_int(row.get("release_posted_at_ms"))
+    if raw_ms:
+        return datetime.fromtimestamp(raw_ms / 1000, tz=timezone.utc).isoformat()
+    return None
 
 
 def _extract_topic_id(url: str) -> str | None:
@@ -333,9 +345,14 @@ def _resolve_next_jump_url(
     target_start = current_start + page_step * jump_pages
     if total_pages > 0:
         max_start = max(0, (total_pages - 1) * max(1, page_step))
+        penultimate_start = max(0, max_start - max(1, page_step))
         if target_start > max_start:
+            if current_start < penultimate_start:
+                return _build_page_url(base_url, penultimate_start), "jump"
+            if current_start == penultimate_start and current_start < max_start:
+                return _build_page_url(base_url, max_start), "jump"
             if next_page_url and current_start < max_start:
-                return next_page_url, "scan"
+                return next_page_url, "jump"
             return None, "jump"
     return _build_page_url(base_url, target_start), "jump"
 
@@ -401,15 +418,18 @@ def _read_cache_rows() -> list[dict[str, Any]]:
     if not os.path.exists(_CACHE_FILE):
         _CACHE_ROWS = []
         _CACHE_MTIME = None
+        logger.info("mircrew cache load skipped path=%s reason=missing_file", _CACHE_FILE)
         return []
     st = os.stat(_CACHE_FILE)
     if _CACHE_ROWS is not None and _CACHE_MTIME == st.st_mtime:
         return _CACHE_ROWS
+    logger.info("mircrew cache load start path=%s", _CACHE_FILE)
     with open(_CACHE_FILE, "r", encoding="utf-8") as handle:
         payload = json.load(handle)
     rows = payload if isinstance(payload, list) else []
     _CACHE_ROWS = rows
     _CACHE_MTIME = st.st_mtime
+    logger.info("mircrew cache load done path=%s items=%s", _CACHE_FILE, len(rows))
     return rows
 
 
@@ -477,6 +497,16 @@ def _count_source_rows(rows: list[dict[str, Any]], source: dict[str, Any]) -> in
     return sum(1 for row in rows if _row_matches_source(row, source))
 
 
+def enrich_sources_with_cache_counts(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows = _read_cache_rows()
+    items: list[dict[str, Any]] = []
+    for source in sources:
+        payload = dict(source)
+        payload["last_count"] = _count_source_rows(rows, source)
+        items.append(payload)
+    return items
+
+
 def _write_refresh_checkpoint(
     existing_rows: list[dict[str, Any]],
     merged_rows: dict[str, dict[str, Any]],
@@ -484,6 +514,7 @@ def _write_refresh_checkpoint(
 ) -> dict[str, Any]:
     rows = _merge_rows_into_cache(existing_rows, merged_rows, now_iso)
     result = _write_cache_rows(rows)
+    logger.info("mircrew refresh checkpoint cache_items=%s updated_at=%s", len(rows), result.get("updated_at"))
     return {
         "rows": rows,
         "count": len(rows),
@@ -515,6 +546,15 @@ def get_status() -> dict[str, Any]:
                 meta = json.load(handle)
             count = _safe_int(meta.get("count")) or 0
             updated_at = meta.get("updated_at")
+        except Exception:
+            pass
+    if count <= 0 or not updated_at:
+        try:
+            rows = _read_cache_rows()
+            if count <= 0:
+                count = len(rows)
+            if not updated_at and os.path.exists(_CACHE_FILE):
+                updated_at = _to_timestamp(os.stat(_CACHE_FILE).st_mtime)
         except Exception:
             pass
     return {
@@ -644,6 +684,7 @@ def start_refresh(db) -> dict[str, Any]:
         existing_rows = _read_cache_rows()
         existing = {str(row.get("release_id") or ""): row for row in existing_rows}
         now_iso = datetime.now(timezone.utc).isoformat()
+        logger.info("mircrew refresh start sources=%s existing_rows=%s", len(sources), len(existing_rows))
         def _flush_checkpoint() -> dict[str, Any]:
             return _write_refresh_checkpoint(existing_rows, merged, now_iso)
         with _REFRESH_LOCK:
@@ -653,6 +694,12 @@ def start_refresh(db) -> dict[str, Any]:
         for source in sources:
             if _CANCEL_EVENT.is_set():
                 checkpoint = _flush_checkpoint()
+                logger.warning(
+                    "mircrew refresh cancelled processed=%s/%s cache_items=%s",
+                    _REFRESH_STATE["processed_sources"],
+                    len(sources),
+                    checkpoint["count"],
+                )
                 with _REFRESH_LOCK:
                     _REFRESH_STATE["cancelled"] = True
                     _REFRESH_STATE["running"] = False
@@ -670,14 +717,28 @@ def start_refresh(db) -> dict[str, Any]:
                 _REFRESH_STATE["current_source_total_pages"] = 0
                 _REFRESH_STATE["current_source_new_items"] = 0
                 _REFRESH_STATE["updated_at"] = datetime.now(timezone.utc)
+            logger.info("mircrew refresh source start id=%s name=%s url=%s", source["id"], source["name"], source["url"])
             try:
                 _refresh_source_rows(source, merged, existing, now_iso, checkpoint_callback=_flush_checkpoint)
                 _preserve_existing_source_rows(merged, existing_rows, source)
                 source_count = _count_source_rows(list(merged.values()), source)
                 db.set_mircrew_source_stats(int(source["id"]), source_count)
+                logger.info(
+                    "mircrew refresh source done id=%s name=%s source_count=%s merged_items=%s",
+                    source["id"],
+                    source["name"],
+                    source_count,
+                    len(merged),
+                )
             except MircrewRefreshCancelled:
                 _preserve_existing_source_rows(merged, existing_rows, source)
                 checkpoint = _flush_checkpoint()
+                logger.warning(
+                    "mircrew refresh cancelled during source id=%s name=%s cache_items=%s",
+                    source["id"],
+                    source["name"],
+                    checkpoint["count"],
+                )
                 with _REFRESH_LOCK:
                     _REFRESH_STATE["cancelled"] = True
                     _REFRESH_STATE["running"] = False
@@ -688,11 +749,13 @@ def start_refresh(db) -> dict[str, Any]:
                     _REFRESH_STATE["items_count"] = checkpoint["count"]
                 return
             except mircrew_browser.MircrewBrowserAuthRequired as exc:
+                logger.error("mircrew refresh auth required source=%s error=%s", source["name"], exc)
                 with _REFRESH_LOCK:
                     _REFRESH_STATE["error"] = str(exc)
                     _REFRESH_STATE["running"] = False
                 return
             except Exception as exc:
+                logger.exception("mircrew refresh source failed id=%s name=%s url=%s", source["id"], source["name"], source["url"])
                 with _REFRESH_LOCK:
                     _REFRESH_STATE["error"] = f"{source['name']}: {exc}"
                     _REFRESH_STATE["updated_at"] = datetime.now(timezone.utc)
@@ -704,6 +767,7 @@ def start_refresh(db) -> dict[str, Any]:
                 _REFRESH_STATE["updated_at"] = datetime.now(timezone.utc)
 
         checkpoint = _flush_checkpoint()
+        logger.info("mircrew refresh done processed=%s/%s cache_items=%s", len(sources), len(sources), checkpoint["count"])
         with _REFRESH_LOCK:
             _REFRESH_STATE["running"] = False
             _REFRESH_STATE["current_source"] = None
@@ -721,6 +785,7 @@ def start_refresh(db) -> dict[str, Any]:
 
 def cancel_refresh() -> dict[str, Any]:
     _CANCEL_EVENT.set()
+    logger.warning("mircrew refresh cancel requested")
     with _REFRESH_LOCK:
         if _REFRESH_STATE["running"]:
             _REFRESH_STATE["cancelled"] = True
@@ -758,8 +823,16 @@ def start_source_refresh(db, source: dict[str, Any]) -> dict[str, Any]:
 
     def _run() -> None:
         try:
+            logger.info("mircrew single-source refresh start id=%s name=%s url=%s", source["id"], source["name"], source["url"])
             result = refresh_single_source_cache(source, save_progress=True)
             db.set_mircrew_source_stats(int(source["id"]), result["source_count"])
+            logger.info(
+                "mircrew single-source refresh done id=%s name=%s source_count=%s cache_items=%s",
+                source["id"],
+                source["name"],
+                result["source_count"],
+                result["cache_count"],
+            )
             with _REFRESH_LOCK:
                 _REFRESH_STATE["processed_sources"] = 1
                 _REFRESH_STATE["running"] = False
@@ -770,6 +843,7 @@ def start_source_refresh(db, source: dict[str, Any]) -> dict[str, Any]:
                 _REFRESH_STATE["items_count"] = result["cache_count"]
         except MircrewRefreshCancelled as exc:
             result = exc.result or {}
+            logger.warning("mircrew single-source refresh cancelled id=%s name=%s", source["id"], source["name"])
             with _REFRESH_LOCK:
                 _REFRESH_STATE["cancelled"] = True
                 _REFRESH_STATE["running"] = False
@@ -779,11 +853,13 @@ def start_source_refresh(db, source: dict[str, Any]) -> dict[str, Any]:
                 _REFRESH_STATE["updated_at"] = datetime.fromisoformat(result["updated_at"]) if result.get("updated_at") else datetime.now(timezone.utc)
                 _REFRESH_STATE["items_count"] = result.get("cache_count") or _REFRESH_STATE["items_count"]
         except mircrew_browser.MircrewBrowserAuthRequired as exc:
+            logger.error("mircrew single-source refresh auth required id=%s name=%s error=%s", source["id"], source["name"], exc)
             with _REFRESH_LOCK:
                 _REFRESH_STATE["error"] = str(exc)
                 _REFRESH_STATE["running"] = False
                 _REFRESH_STATE["updated_at"] = datetime.now(timezone.utc)
         except Exception as exc:
+            logger.exception("mircrew single-source refresh failed id=%s name=%s url=%s", source["id"], source["name"], source["url"])
             with _REFRESH_LOCK:
                 _REFRESH_STATE["error"] = f"{source['name']}: {exc}"
                 _REFRESH_STATE["running"] = False
@@ -858,6 +934,7 @@ def get_release_detail(release_id: str | None = None, release_url: str | None = 
             "cache_hit": True,
             "release_id": release_key,
             "release_url": row.get("release_url"),
+            "created_at": row_created_at(row),
             **cached,
         }
 
@@ -868,6 +945,7 @@ def get_release_detail(release_id: str | None = None, release_url: str | None = 
         "cache_hit": False,
         "release_id": release_key,
         "release_url": row.get("release_url"),
+        "created_at": row_created_at(row),
         **detail,
     }
 
@@ -905,6 +983,7 @@ def _refresh_source_rows(
 
         cached = page_cache.get(page_url)
         if cached is None:
+            logger.info("mircrew refresh page fetch source=%s mode=%s url=%s", source.get("name"), mode, page_url)
             html = mircrew_browser.fetch_html(page_url)
             doc = _validate_list_page_html(html, str(source.get("name") or "MirCrew source"))
             next_page_url = _find_next_page_url(doc, page_url)
@@ -926,11 +1005,28 @@ def _refresh_source_rows(
         known_ids_before = set(existing.keys()) | set(merged.keys())
         page_topic_ids = [str(row.get("release_id") or "") for row in page_rows if str(row.get("release_id") or "").strip()]
         page_is_known = bool(page_topic_ids) and all(topic_id in known_ids_before for topic_id in page_topic_ids)
+        logger.info(
+            "mircrew refresh page parsed source=%s page=%s/%s mode=%s rows=%s known=%s start=%s",
+            source.get("name"),
+            max(1, current_start // max(1, page_step) + 1),
+            total_pages,
+            mode,
+            len(page_rows),
+            page_is_known,
+            current_start,
+        )
 
         if page_url not in counted_pages:
             count += len(page_rows)
             counted_pages.add(page_url)
             if checkpoint_callback and len(counted_pages) % flush_pages == 0:
+                logger.info(
+                    "mircrew refresh checkpoint trigger source=%s pages_scanned=%s flush_pages=%s merged_items=%s",
+                    source.get("name"),
+                    len(counted_pages),
+                    flush_pages,
+                    len(merged),
+                )
                 checkpoint_callback()
         for row in page_rows:
             release_id = str(row.get("release_id") or "")
@@ -969,6 +1065,13 @@ def _refresh_source_rows(
                     total_pages,
                     next_page_url,
                 )
+                logger.info(
+                    "mircrew refresh mode change source=%s from=scan to=%s current_start=%s next_url=%s",
+                    source.get("name"),
+                    mode,
+                    current_start,
+                    page_url,
+                )
             else:
                 page_url = next_page_url
             continue
@@ -984,11 +1087,31 @@ def _refresh_source_rows(
                 total_pages,
                 next_page_url,
             )
+            logger.info(
+                "mircrew refresh jump continue source=%s current_start=%s next_url=%s",
+                source.get("name"),
+                current_start,
+                page_url,
+            )
         else:
             rollback_start = (last_known_start or 0) + page_step
             mode = "scan"
             jump_resume_after_start = current_start
             page_url = _build_page_url(base_url, rollback_start)
+            logger.info(
+                "mircrew refresh rollback source=%s rollback_start=%s resume_after=%s",
+                source.get("name"),
+                rollback_start,
+                jump_resume_after_start,
+            )
+    logger.info(
+        "mircrew refresh source loop done source=%s counted_pages=%s rows_seen=%s new_items=%s iterations=%s",
+        source.get("name"),
+        len(counted_pages),
+        count,
+        source_new_items,
+        iterations,
+    )
     return count
 
 
@@ -1049,28 +1172,39 @@ def _set_detail_cache(release_id: str, detail: dict[str, Any]) -> None:
 
 
 def _resolve_release_detail(release_url: str, release_id: str) -> dict[str, Any]:
-    html = mircrew_browser.fetch_html(release_url)
+    html = mircrew_browser.fetch_html(release_url, wait_until="networkidle")
     doc = _validate_list_page_html(html, f"MirCrew release {release_id or release_url}")
     magnets = _extract_magnets(doc, release_url)
     torrents = _extract_torrent_links(doc, release_url)
+    swarm = _extract_swarm_stats(doc)
     thanks_url = _find_thanks_url(doc, release_url)
     thanks_clicked = False
     if not magnets and not torrents and thanks_url:
-        thanks_html = mircrew_browser.fetch_html(thanks_url)
+        thanks_html = mircrew_browser.fetch_html(thanks_url, wait_until="networkidle")
         thanks_doc = _validate_list_page_html(thanks_html, f"MirCrew release {release_id or release_url}")
         magnets = _extract_magnets(thanks_doc, release_url)
         torrents = _extract_torrent_links(thanks_doc, release_url)
         doc = thanks_doc
+        swarm = _extract_swarm_stats(thanks_doc) or swarm
         thanks_clicked = True
     size_text_raw, size_bytes = _extract_size(doc)
-    magnet_info = _parse_magnet_info(magnets[0] if magnets else None)
-    final_size_bytes = (magnet_info or {}).get("size_bytes") or size_bytes
+    magnet_infos = [_parse_magnet_info(magnet) for magnet in magnets]
+    magnet_infos = [info for info in magnet_infos if info]
+    magnet_size_values = [
+        int(info["size_bytes"])
+        for info in magnet_infos
+        if info.get("size_bytes") not in (None, "", 0)
+    ]
+    final_size_bytes = sum(magnet_size_values) if magnet_size_values else size_bytes
     has_download_links = bool(magnets or torrents)
     return {
         "magnet_links": magnets,
         "torrent_links": torrents,
         "size_text_raw": size_text_raw,
         "size_bytes": final_size_bytes,
+        "seeders": swarm.get("seeders"),
+        "leechers": swarm.get("leechers"),
+        "peers": swarm.get("peers"),
         "thanks_required": bool(thanks_url),
         "thanks_clicked": thanks_clicked,
         "detail_status": "ok" if has_download_links else "incomplete",
@@ -1145,14 +1279,68 @@ def _parse_magnet_info(magnet: str | None) -> dict[str, Any] | None:
         return None
 
 
+def _extract_swarm_stats(doc: BeautifulSoup) -> dict[str, int | None]:
+    node = doc.select_one("#magnetData")
+    html = str(node or doc)
+    text = node.get_text(" ", strip=True) if node else doc.get_text(" ", strip=True)
+
+    def _match_stat(label: str) -> int | None:
+        patterns = (
+            rf"{label}\s*:\s*<strong[^>]*>\s*(\d+)\s*</strong>",
+            rf"{label}\s*:\s*(\d+)\b",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, html, flags=re.IGNORECASE)
+            if match:
+                value = _safe_int(match.group(1))
+                if value is not None:
+                    return value
+        match = re.search(rf"\b{label}\s*:\s*(\d+)\b", text, flags=re.IGNORECASE)
+        return _safe_int(match.group(1)) if match else None
+
+    seeders = _match_stat("Seed")
+    leechers = _match_stat("Leech")
+    peers = None
+    if seeders is not None or leechers is not None:
+        peers = (seeders or 0) + (leechers or 0)
+    return {
+        "seeders": seeders,
+        "leechers": leechers,
+        "peers": peers,
+    }
+
+
 def _extract_size(doc: BeautifulSoup) -> tuple[str | None, int | None]:
-    texts = [
-        doc.get_text(" ", strip=True),
-        *(node.get_text(" ", strip=True) for node in doc.select(".content, .postbody, .entry-content")),
-    ]
-    for text in texts:
-        match = _SIZE_RE.search(text)
-        if match:
+    # MirCrew can include unrelated size strings in thanks/quotes/reply metadata
+    # elsewhere in the page. Restrict extraction to the first release post block.
+    for selector in (".content", ".postbody", ".entry-content", ".post"):
+        nodes = doc.select(selector)
+        if not nodes:
+            continue
+        text = nodes[0].get_text(" ", strip=True)
+        strong_patterns = (
+            r"Dimensione\s*:\s*[\d.,\s]+\s*bytes\s*\(([^)]+)\)",
+            r"File size\s*:\s*([^\n\r]+?\b(?:TB|GB|MB|KB|B|TiB|GiB|MiB|KiB)\b)",
+        )
+        for pattern in strong_patterns:
+            match = re.search(pattern, text, flags=re.IGNORECASE)
+            if not match:
+                continue
+            raw = _normalize_whitespace(match.group(1))
+            parsed = _parse_size_text_to_bytes(raw)
+            if parsed:
+                return raw, parsed
+
+        for match in _SIZE_RE.finditer(text):
             raw = _normalize_whitespace(match.group(0))
-            return raw, _parse_size_text_to_bytes(raw)
+            start = match.start()
+            end = match.end()
+            context_after = text[end:end + 8].lower()
+            context_before = text[max(0, start - 24):start].lower()
+            context_window = f"{context_before} {context_after}"
+            if "/s" in context_after or "bitrate" in context_window or " kb/s" in context_window or " mb/s" in context_window:
+                continue
+            parsed = _parse_size_text_to_bytes(raw)
+            if parsed:
+                return raw, parsed
     return None, None

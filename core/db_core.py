@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 import psycopg2
+from psycopg2 import InterfaceError, OperationalError
 from psycopg2.extras import RealDictCursor
 from dataclasses import dataclass, field
 from typing import Optional
@@ -94,18 +95,40 @@ class MediaDB:
         if missing:
             missing_list = ", ".join(missing)
             raise RuntimeError(f"Missing DB settings: {missing_list}")
-        self.conn = psycopg2.connect(
+        self._conn = None
+        self.conn = _ConnectionProxy(self)
+        self._connect()
+
+    def _connect(self):
+        self._conn = psycopg2.connect(
             host=DB_HOST,
             port=DB_PORT,
             dbname=DB_NAME,
             user=DB_USER,
             password=DB_PASSWORD
         )
-        self.conn.autocommit = True
+        self._conn.autocommit = True
+
+    def _ensure_connection(self):
+        conn = self._conn
+        if conn is None or getattr(conn, "closed", 1):
+            self._connect()
+            return self._conn
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+        except (OperationalError, InterfaceError):
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._connect()
+        return self._conn
 
     def close(self):
         """Close the database connection."""
-        self.conn.close()
+        if self._conn is not None and not getattr(self._conn, "closed", 1):
+            self._conn.close()
 
     def add_media(self, media: Media) -> tuple[int, bool]:
         """
@@ -671,3 +694,33 @@ class MediaDB:
             """, (last_count, source_id))
             self.conn.commit()
             return cur.rowcount > 0
+
+
+class _ConnectionProxy:
+    def __init__(self, db: 'MediaDB'):
+        self._db = db
+
+    def cursor(self, *args, **kwargs):
+        return self._db._ensure_connection().cursor(*args, **kwargs)
+
+    def commit(self):
+        return self._db._ensure_connection().commit()
+
+    def close(self):
+        conn = self._db._conn
+        if conn is not None and not getattr(conn, "closed", 1):
+            return conn.close()
+        return None
+
+    @property
+    def autocommit(self):
+        return self._db._ensure_connection().autocommit
+
+    @autocommit.setter
+    def autocommit(self, value):
+        self._db._ensure_connection().autocommit = value
+
+    @property
+    def closed(self):
+        conn = self._db._conn
+        return 1 if conn is None else conn.closed
