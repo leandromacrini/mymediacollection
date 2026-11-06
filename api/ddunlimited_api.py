@@ -5,7 +5,7 @@ import os
 import re
 import unicodedata
 from urllib.parse import unquote, urlencode
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from threading import Event, RLock, Thread
 from dataclasses import dataclass
@@ -405,6 +405,8 @@ class DDURefreshCancelled(RuntimeError):
 
 def parse_forum_page(html: str, source: DDUListSource, base_url: str) -> list[DDUItem]:
     soup = BeautifulSoup(html, "html.parser")
+    if _is_empty_forum_page(soup, source):
+        return []
     if not soup.select("ul.topiclist") or not soup.select("div.pagination"):
         raise DDUInvalidSourcePage(f"{source.name}: struttura forum non riconosciuta")
     items = {}
@@ -432,6 +434,32 @@ def parse_forum_page(html: str, source: DDUListSource, base_url: str) -> list[DD
             language=source.language or _parse_language(info), media_type=source.media_type,
             category=source.category, year=_parse_year(title), source_name=source.name)
     return list(items.values())
+
+
+def _is_empty_forum_page(soup, source: DDUListSource) -> bool:
+    """Require phpBB forum identity and its explicit no-topics notice.
+
+    Missing/unparseable topic rows alone are never evidence of an empty forum.
+    phpBB may omit the topic list entirely when S_NO_TOPICS is set.
+    """
+    forum = parse_qs(urlparse(source.url).query).get("f")
+    identity = any(
+        urlparse(urljoin(source.url, anchor["href"])).path.endswith("/viewforum.php")
+        and urlparse(urljoin(source.url, anchor["href"])).netloc == urlparse(source.url).netloc
+        and parse_qs(urlparse(anchor["href"]).query).get("f") == forum
+        for anchor in soup.select("h2.forum-title a[href]")
+    )
+    notices = {"non ci sono argomenti in questo forum.", "non ci sono argomenti in questo forum",
+               "non ci sono argomenti o messaggi in questo forum.", "non ci sono argomenti o messaggi in questo forum",
+               "there are no topics or posts in this forum.", "there are no topics or posts in this forum"}
+    notice = any(node.get_text(" ", strip=True).lower() in notices
+                 for node in soup.select(".panel .inner strong, ul.topiclist li.row dt"))
+    # Reject contradictory topic markup, even when the parser cannot read it.
+    topics = soup.select("a.topictitle, li.row dl.topic_read, li.row dl.topic_unread")
+    unexpected_rows = any(row.get_text(" ", strip=True).lower() not in notices
+                          for row in soup.select("li.row"))
+    pagination = soup.select_one("div.pagination")
+    return bool(identity and notice and pagination and not topics and not unexpected_rows)
 
 
 def read_source(source, base_url, db=None, session=None, cancel=None, progress=None):
@@ -465,7 +493,7 @@ def read_source(source, base_url, db=None, session=None, cancel=None, progress=N
                     raise DDUInvalidSourcePage("Numero pagine cambiato durante il refresh; riprovare")
                 expected_pages = declared
         parsed_items = parse_forum_page(html, source, base_url) if forum else parse_list_page(html, source, base_url)
-        if not parsed_items:
+        if not parsed_items and not (forum and offset == 0 and _is_empty_forum_page(soup, source)):
             raise DDUInvalidSourcePage(f"{source.name}: nessuna release; cache precedente conservata")
         fingerprint = tuple(sorted(item.topic_id for item in parsed_items))
         if fingerprint in fingerprints:
@@ -492,6 +520,8 @@ def read_source(source, base_url, db=None, session=None, cancel=None, progress=N
                     pending.append(next_offset)
             if len(visited) + len(pending) > 10000:
                 raise DDUInvalidSourcePage("Limite pagine superato")
+            if not parsed_items and pending:
+                raise DDUInvalidSourcePage("Forum vuoto con paginazione incoerente; cache precedente conservata")
         if progress:
             progress(len(visited), len(items))
         if cancel and cancel.is_set():
@@ -562,10 +592,15 @@ def refresh_source_cache(source_row: dict, db: db_core.MediaDB | None = None) ->
     items, pages = read_source(source_obj, cfg["base_url"], db=db)
     cached = _copy_cache_items()
     source_name = source_obj.name
-    filtered_cache = {
-        key: item for key, item in cached.items()
-        if _source_names_set(item.source_name) != {source_name}
-    }
+    filtered_cache = {}
+    for key, item in cached.items():
+        names = _source_names_set(item.source_name)
+        if source_name in names:
+            names.remove(source_name)
+            if not names:
+                continue
+            item = replace(item, source_name=", ".join(sorted(names)))
+        filtered_cache[key] = item
     source_count = 0
     topic_keys = {item.topic_id: key for key, item in filtered_cache.items() if item.topic_id}
     for item in items:
