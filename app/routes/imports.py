@@ -7,6 +7,7 @@ from flask import Blueprint, render_template
 
 from api import radarr_api
 from api import plex_db_api
+from api import plex_compare_api
 from api import sonarr_api
 from app.extensions import db
 from app.utils import allowed_file, get_uploaded_file, save_uploaded_file
@@ -15,6 +16,8 @@ from core.db_core import Media
 bp = Blueprint("imports", __name__)
 _plex_jobs = {}
 _plex_jobs_lock = threading.Lock()
+_plex_compare_jobs = {}
+_plex_compare_jobs_lock = threading.Lock()
 
 
 def _normalize_title(title: str) -> str:
@@ -119,6 +122,10 @@ def _parse_bool(value: str | None, default: bool = False) -> bool:
     if value is None:
         return default
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _is_db_filename(filename: str | None) -> bool:
+    return str(filename or "").lower().endswith(".db")
 
 
 def _build_preview(
@@ -455,6 +462,68 @@ def _start_preview_job(filepath: str, import_movies: bool, import_series: bool, 
     threading.Thread(target=_run_job, daemon=True).start()
     return job_id
 
+
+def _start_compare_job(legacy_path: str, current_path: str) -> str:
+    job_id = uuid.uuid4().hex
+    with _plex_compare_jobs_lock:
+        _plex_compare_jobs[job_id] = {
+            "status": "running",
+            "stage": "Analisi DB legacy",
+            "processed": 0,
+            "total": 4,
+            "result": None,
+            "error": None,
+            "updated_at": time.time(),
+        }
+
+    def _run_job():
+        try:
+            with _plex_compare_jobs_lock:
+                _plex_compare_jobs[job_id]["stage"] = "Lettura film legacy"
+                _plex_compare_jobs[job_id]["processed"] = 1
+                _plex_compare_jobs[job_id]["updated_at"] = time.time()
+            legacy_movies = plex_compare_api.load_movies_from_db(legacy_path)
+
+            with _plex_compare_jobs_lock:
+                _plex_compare_jobs[job_id]["stage"] = "Lettura serie legacy"
+                _plex_compare_jobs[job_id]["processed"] = 2
+                _plex_compare_jobs[job_id]["updated_at"] = time.time()
+            legacy_series = plex_compare_api.load_series_from_db(legacy_path)
+
+            with _plex_compare_jobs_lock:
+                _plex_compare_jobs[job_id]["stage"] = "Lettura film attuale"
+                _plex_compare_jobs[job_id]["processed"] = 3
+                _plex_compare_jobs[job_id]["updated_at"] = time.time()
+            current_movies = plex_compare_api.load_movies_from_db(current_path)
+
+            with _plex_compare_jobs_lock:
+                _plex_compare_jobs[job_id]["stage"] = "Lettura serie attuale"
+                _plex_compare_jobs[job_id]["processed"] = 4
+                _plex_compare_jobs[job_id]["updated_at"] = time.time()
+            current_series = plex_compare_api.load_series_from_db(current_path)
+
+            result = plex_compare_api.build_compare_result(
+                legacy_movies,
+                legacy_series,
+                current_movies,
+                current_series,
+                legacy_path,
+                current_path,
+            )
+            with _plex_compare_jobs_lock:
+                _plex_compare_jobs[job_id]["status"] = "done"
+                _plex_compare_jobs[job_id]["stage"] = "Completato"
+                _plex_compare_jobs[job_id]["result"] = result
+                _plex_compare_jobs[job_id]["updated_at"] = time.time()
+        except Exception as exc:
+            with _plex_compare_jobs_lock:
+                _plex_compare_jobs[job_id]["status"] = "error"
+                _plex_compare_jobs[job_id]["error"] = str(exc)
+                _plex_compare_jobs[job_id]["updated_at"] = time.time()
+
+    threading.Thread(target=_run_job, daemon=True).start()
+    return job_id
+
 @bp.route("/imports", methods=["GET"])
 def imports_page():
     return render_template("imports.html")
@@ -578,6 +647,61 @@ def import_plex_status():
         "processed": job.get("processed"),
         "total": job.get("total"),
         "error": job.get("error")
+    })
+
+
+@bp.route("/compare/plex", methods=["GET", "POST"])
+def compare_plex():
+    from flask import jsonify, request
+
+    preview = None
+    job_id = request.args.get("job_id")
+    if request.method == "GET" and job_id:
+        with _plex_compare_jobs_lock:
+            job = _plex_compare_jobs.get(job_id)
+        if job and job.get("status") == "done":
+            preview = job.get("result")
+
+    if request.method == "POST":
+        legacy_file = request.files.get("legacy_file")
+        current_file = request.files.get("current_file")
+        if not legacy_file or not current_file:
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"ok": False, "error": "missing_files"}), 400
+            return render_template("plex_compare.html", preview=None, error="Servono entrambi i file DB Plex.")
+        if not _is_db_filename(legacy_file.filename) or not _is_db_filename(current_file.filename):
+            if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+                return jsonify({"ok": False, "error": "invalid_file"}), 400
+            return render_template("plex_compare.html", preview=None, error="Sono accettati solo file .db")
+
+        legacy_path = save_uploaded_file(legacy_file, prefix="legacy")
+        current_path = save_uploaded_file(current_file, prefix="current")
+        if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+            compare_job_id = _start_compare_job(legacy_path, current_path)
+            return jsonify({"ok": True, "job_id": compare_job_id})
+        preview = plex_compare_api.compare_databases(legacy_path, current_path)
+
+    return render_template("plex_compare.html", preview=preview, error=None)
+
+
+@bp.route("/compare/plex/status")
+def compare_plex_status():
+    from flask import jsonify, request
+
+    job_id = request.args.get("job_id")
+    if not job_id:
+        return jsonify({"ok": False, "error": "missing_job_id"}), 400
+    with _plex_compare_jobs_lock:
+        job = _plex_compare_jobs.get(job_id)
+    if not job:
+        return jsonify({"ok": False, "error": "not_found"}), 404
+    return jsonify({
+        "ok": True,
+        "status": job.get("status"),
+        "stage": job.get("stage"),
+        "processed": job.get("processed"),
+        "total": job.get("total"),
+        "error": job.get("error"),
     })
 
 

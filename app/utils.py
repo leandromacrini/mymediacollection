@@ -4,7 +4,7 @@ from werkzeug.utils import secure_filename
 
 from core.db_core import Media
 
-UPLOAD_FOLDER = "uploads"
+UPLOAD_FOLDER = (os.environ.get("MMC_UPLOAD_DIR") or "/uploads").strip() or "/uploads"
 ALLOWED_EXTENSIONS = {"db", "txt"}
 
 
@@ -31,8 +31,13 @@ def get_uploaded_file():
     return file, None
 
 
-def save_uploaded_file(file) -> str:
+def save_uploaded_file(file, prefix: str | None = None) -> str:
     filename = secure_filename(file.filename)
+    if prefix:
+        safe_prefix = secure_filename(prefix).strip("_")
+        if safe_prefix:
+            filename = f"{safe_prefix}_{filename}"
+    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     filepath = os.path.join(UPLOAD_FOLDER, filename)
     file.save(filepath)
     return filepath

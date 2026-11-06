@@ -1,0 +1,41 @@
+.plex-compare-table td {
+    vertical-align: top;
+}
+
+.plex-compare-table tbody tr:nth-child(odd) {
+    --bs-table-bg: rgba(248, 249, 250, 0.85);
+}
+
+.plex-compare-table .badge {
+    white-space: normal;
+}
+
+.plex-compare-match-cell {
+    min-width: 180px;
+}
+
+.plex-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 1050;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.plex-loading__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.plex-loading__card {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px 22px;
+    text-align: center;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+    min-width: 320px;
+}

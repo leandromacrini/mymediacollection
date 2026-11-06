@@ -62,28 +62,30 @@
         const total = data.total_sources || 0;
         const current = data.current_source ? ` - ${data.current_source}` : "";
           if (cacheProgressEl) {
-            if (data.cancelled) {
+            if (data.error) {
+              cacheProgressEl.textContent = `Errore: ${data.error}. Cache precedente conservata.`;
+            } else if (data.cancelled) {
               cacheProgressEl.textContent = "Ricarica annullata.";
             } else if (data.running) {
-              cacheProgressEl.textContent = `Liste ${processed}/${total}${current} • ${data.items_count || 0} release`;
+              cacheProgressEl.textContent = `Pagine ${data.pages_read || 0} ? Sorgente: ${data.source_items || 0} release uniche ? Liste ${processed}/${total}${current} • ${data.items_count || 0} release`;
             } else {
-              cacheProgressEl.textContent = `Completata: ${data.items_count || 0} release`;
+              cacheProgressEl.textContent = `Completata: ${processed}/${total} sorgenti, ${data.pages_read || 0} pagine, ${data.items_count || 0} release uniche`;
             }
           }
           if (!data.running) {
             refreshing = false;
-            formatStatus(data.items_count || 0, data.updated_at || "");
+            await fetchStatus();
             if (pollTimer) {
               clearInterval(pollTimer);
               pollTimer = null;
             }
-            if (!data.cancelled) {
+            if (!data.cancelled && !data.error) {
               setTimeout(() => modal?.hide(), 500);
             }
           }
         };
       await poll();
-      pollTimer = setInterval(poll, 1000);
+      if (refreshing) pollTimer = setInterval(poll, 1000);
     } catch (err) {
       await fetchStatus();
       if (cacheProgressEl) {

@@ -94,7 +94,9 @@ def fetch_page(url: str, *, base_url: str, service_name: str, wait_until: str = 
         context = browser.contexts[0] if browser.contexts else browser.new_context()
         page = context.new_page()
         try:
-            page.goto(url, wait_until=wait_until, timeout=timeout_ms)
+            response = page.goto(url, wait_until=wait_until, timeout=timeout_ms)
+            if response is None or response.status >= 400:
+                raise RemoteBrowserError(f"{service_name}: HTTP {response.status if response else 'no response'}")
             content = page.content()
             current_url = page.url
             if is_login_page(current_url, content):
